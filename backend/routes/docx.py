@@ -33,7 +33,7 @@ def _generate(meeting_id: str) -> Path:
             data = db.get_summary(meeting_id)
             if data:
                 out_dir.mkdir(parents=True, exist_ok=True)
-                summary_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+                summary_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
         except Exception:
             pass
 

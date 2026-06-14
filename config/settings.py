@@ -4,6 +4,7 @@ All pipeline stages import from here. No hardcoded values elsewhere.
 """
 
 import os
+import shutil
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -31,6 +32,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT_DIR / "config"
 PROMPTS_DIR = CONFIG_DIR / "prompts"
 OUTPUT_DIR = ROOT_DIR / "output"
+BIN_DIR = ROOT_DIR / "video" / "bin"
 
 RAW_TRANSCRIPTS_DIR = OUTPUT_DIR / "raw_transcripts"
 CLEANED_TRANSCRIPTS_DIR = OUTPUT_DIR / "cleaned_transcripts"
@@ -42,12 +44,50 @@ for d in [RAW_TRANSCRIPTS_DIR, CLEANED_TRANSCRIPTS_DIR, SUMMARIES_DIR, DOCUMENTS
     d.mkdir(parents=True, exist_ok=True)
 
 # ──────────────────────────────────────────────
+# BINARY PATHS (FFmpeg / FFprobe)
+# ──────────────────────────────────────────────
+# Resolution order:
+#   1. Bundled binary in Botzilla-/video/bin/  (always preferred — self-contained)
+#   2. System PATH via shutil.which      (fallback if bin/ is absent)
+#   3. Startup error with clear message  (never a silent [WinError 2])
+
+def _resolve_binary(name: str) -> str:
+    """Resolve ffmpeg/ffprobe to an absolute path. Raises at startup if not found."""
+    # Check bundled bin/ first
+    bundled = BIN_DIR / (name + ".exe")  # Windows
+    if bundled.exists():
+        return str(bundled)
+    bundled_unix = BIN_DIR / name  # Linux/Mac
+    if bundled_unix.exists():
+        return str(bundled_unix)
+    # Fall back to system PATH
+    system = shutil.which(name)
+    if system:
+        return system
+    raise EnvironmentError(
+        f"[Botzilla] '{name}' not found.\n"
+        f"  → Copy {name}.exe into: {BIN_DIR}\n"
+        f"  → Or install FFmpeg and ensure it is on your system PATH."
+    )
+
+FFMPEG_PATH  = _resolve_binary("ffmpeg")
+FFPROBE_PATH = _resolve_binary("ffprobe")
+
+# ──────────────────────────────────────────────
 # WHISPERX & DIARIZATION
 # ──────────────────────────────────────────────
 
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "large-v3")  # "tiny", "base", "small", "medium", "large-v3"
 WHISPER_BATCH_SIZE = 16
-WHISPER_COMPUTE_TYPE = "float16"  # "float16" for GPU, "int8" for CPU
+# Auto-detect: float16 on CUDA GPU, int8 on CPU — avoids crash on CPU-only machines
+def _detect_compute_type() -> str:
+    try:
+        import torch
+        return "float16" if torch.cuda.is_available() else "int8"
+    except ImportError:
+        return "int8"
+
+WHISPER_COMPUTE_TYPE = _detect_compute_type()
 DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 MAX_SPEAKERS = 8
 MIN_SPEAKERS = 1

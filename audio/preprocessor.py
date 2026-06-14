@@ -7,7 +7,12 @@ WhisperX was trained on 16kHz — this pre-processing step improves accuracy.
 import os
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
+
+# Use bundled binary paths — never rely on bare "ffmpeg" from PATH
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from config.settings import FFMPEG_PATH, FFPROBE_PATH
 
 
 def convert_to_wav(input_path: str, output_path: str = None) -> str:
@@ -30,7 +35,7 @@ def convert_to_wav(input_path: str, output_path: str = None) -> str:
         output_path = str(parent / f"{base}_16k.wav")
 
     cmd = [
-        "ffmpeg",
+        FFMPEG_PATH,
         "-y",                      # overwrite
         "-i", input_path,          # input
         "-ac", "1",                # mono
@@ -47,14 +52,14 @@ def convert_to_wav(input_path: str, output_path: str = None) -> str:
             f"FFmpeg audio conversion failed:\n{result.stderr}"
         )
 
-    print(f"[preprocessor] Converted: {Path(input_path).name} → {Path(output_path).name} (16kHz mono WAV)")
+    print(f"[preprocessor] Converted: {Path(input_path).name} -> {Path(output_path).name} (16kHz mono WAV)")
     return output_path
 
 
 def get_audio_duration(file_path: str) -> float:
     """Get audio duration in seconds using ffprobe."""
     cmd = [
-        "ffprobe",
+        FFPROBE_PATH,
         "-v", "error",
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",

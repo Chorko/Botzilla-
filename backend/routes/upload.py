@@ -69,7 +69,7 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
 
         # Save Schema 1
         raw_path = out_dir / f"{meeting_id}_raw.json"
-        raw_path.write_text(json.dumps(schema1, ensure_ascii=False, indent=2))
+        raw_path.write_text(json.dumps(schema1, ensure_ascii=False, indent=2), encoding='utf-8')
         db.save_raw_transcript(meeting_id, schema1)
 
         # ── Stage 2: Cleaner ──
@@ -81,7 +81,7 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
         schema2 = clean_transcript(schema1)
 
         cleaned_path = out_dir / f"{meeting_id}_cleaned.json"
-        cleaned_path.write_text(json.dumps(schema2, ensure_ascii=False, indent=2))
+        cleaned_path.write_text(json.dumps(schema2, ensure_ascii=False, indent=2), encoding='utf-8')
         db.save_cleaned_transcript(meeting_id, schema2)
 
         # ── Stage 3: Video slides (if applicable) ──
@@ -107,7 +107,7 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
         schema3 = generate_summary(schema2, source_type=source_type, slides=slides)
 
         summary_path = out_dir / f"{meeting_id}_summary.json"
-        summary_path.write_text(json.dumps(schema3, ensure_ascii=False, indent=2))
+        summary_path.write_text(json.dumps(schema3, ensure_ascii=False, indent=2), encoding='utf-8')
         db.save_summary(meeting_id, schema3)
 
         # ── Stage 5: DOCX ──

@@ -30,6 +30,8 @@ from config.settings import (
     FRAME_HEARTBEAT_INTERVAL,
     SCENE_CHANGE_THRESHOLD,
     TARGET_SAMPLE_RATE,
+    FFMPEG_PATH,
+    FFPROBE_PATH,
 )
 
 
@@ -50,7 +52,7 @@ def _run(cmd: list, check: bool = True, capture: bool = True) -> subprocess.Comp
 def get_video_duration(video_path: str) -> float:
     """Get video duration in seconds via ffprobe."""
     result = _run([
-        "ffprobe", "-v", "error",
+        FFPROBE_PATH, "-v", "error",
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
         str(video_path),
@@ -85,7 +87,7 @@ def extract_audio(video_path: str, output_path: str = None) -> str:
         output_path = str(Path(video_path).parent / f"{stem}_audio.wav")
 
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG_PATH, "-y",
         "-i", video_path,
         "-ac", "1",                    # mono
         "-ar", str(TARGET_SAMPLE_RATE),  # 16kHz
@@ -145,7 +147,7 @@ def extract_frames(
 
             # Slice chunk
             _run([
-                "ffmpeg", "-y",
+                FFMPEG_PATH, "-y",
                 "-ss", str(chunk_start),
                 "-i", video_path,
                 "-t", str(chunk_size),
@@ -156,10 +158,10 @@ def extract_frames(
             # Extract frames from chunk
             frame_pattern = str(temp_dir / "frame_%04d.png")
             extract_result = _run([
-                "ffmpeg", "-y",
+                FFMPEG_PATH, "-y",
                 "-i", chunk_name,
                 "-vf", smart_filter,
-                "-vsync", "vfr",
+                "-fps_mode", "vfr",
                 frame_pattern,
             ], check=False)
 
