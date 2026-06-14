@@ -49,3 +49,6 @@ video/bin/
 *.mp3
 *.flac
 *.m4a
+
+# Ignore test directory
+test/

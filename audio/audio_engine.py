@@ -211,8 +211,8 @@ def build_schema1(
     is_multilingual = len(languages_detected) > 1
 
     for i, seg in enumerate(merged_segments):
-        start_time = seg["start"]
-        end_time = seg["end"]
+        start_time = seg.get("start", prev_end_time)
+        end_time = seg.get("end", start_time + 1.0)
         text = seg["text"].strip()
         speaker_id = seg["speaker"]  # Always SPEAKER_XX format from pyannote
 

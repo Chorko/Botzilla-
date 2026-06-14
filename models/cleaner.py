@@ -320,7 +320,7 @@ def clean_transcript(schema1: dict) -> dict:
     elapsed = time.time() - t_start
     print(f"[cleaner] Done in {elapsed:.1f}s — {len(schema2['contexts'])} contexts detected")
     for ctx in schema2["contexts"]:
-        print(f"  [{ctx['start_time']:.1f}s - {ctx['end_time']:.1f}s] {ctx['topic']}")
+        print(f"  [{ctx.get('start_time', 0.0):.1f}s - {ctx.get('end_time', 0.0):.1f}s] {ctx.get('topic', 'Unknown')}")
 
     return schema2
 

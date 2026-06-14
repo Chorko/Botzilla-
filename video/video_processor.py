@@ -183,7 +183,7 @@ def extract_frames(
                 # Rename to final global name and move to output_dir
                 final_name = f"{stem}_frame_{frame_counter:04d}.png"
                 final_path = output_dir / final_name
-                frame_file.rename(final_path)
+                frame_file.replace(final_path)
                 all_frames.append((str(final_path), round(global_ts, 3)))
                 frame_counter += 1
 

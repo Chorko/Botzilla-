@@ -148,8 +148,8 @@ SLIDE_WINDOW_PERCENTAGE = 0.05  # 5% of context duration
 SLIDE_WINDOW_CAP_SECONDS = 180  # 3 minute cap
 
 # Frame extraction
-FRAME_HEARTBEAT_INTERVAL = 7  # seconds between forced frame captures
-SCENE_CHANGE_THRESHOLD = 0.02  # FFmpeg scene detection sensitivity (0.0 - 1.0)
+FRAME_HEARTBEAT_INTERVAL = 60  # seconds between forced frame captures
+SCENE_CHANGE_THRESHOLD = 0.3  # FFmpeg scene detection sensitivity (0.0 - 1.0)
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 360
 

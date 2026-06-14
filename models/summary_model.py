@@ -67,14 +67,14 @@ def _preprocess_for_summary(schema2: dict) -> dict:
     contexts_lean = []
     for ctx in schema2.get("contexts", []):
         contexts_lean.append({
-            "context_id": ctx["context_id"],
-            "index": ctx["index"],
+            "context_id": ctx.get("context_id", f"ctx_{ctx.get('index', 0):03d}"),
+            "index": ctx.get("index", 0),
             "topic": ctx.get("topic", ""),
             "topic_keywords": ctx.get("topic_keywords", []),
             "topic_type": ctx.get("topic_type", "other"),
-            "start_time": ctx["start_time"],
-            "end_time": ctx["end_time"],
-            "duration_seconds": ctx["duration_seconds"],
+            "start_time": ctx.get("start_time", 0.0),
+            "end_time": ctx.get("end_time", 0.0),
+            "duration_seconds": ctx.get("duration_seconds", 0.0),
             "dominant_speaker": ctx.get("dominant_speaker"),
             "speakers_involved": ctx.get("speakers_involved", []),
             "segments": ctx.get("segments", []),
@@ -212,8 +212,11 @@ def _build_chatbot_context(summary: dict) -> dict:
         return f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
 
     topic_index = {
-        t["topic_id"]: f"{t['title']} ({_fmt_time(t['start_time'])} – {_fmt_time(t['end_time'])})"
-        for t in topics
+        t.get("topic_id", f"topic_{i}"): (
+            f"{t.get('title', 'Untitled')} "
+            f"({_fmt_time(t.get('start_time', 0.0))} – {_fmt_time(t.get('end_time', 0.0))})"
+        )
+        for i, t in enumerate(topics)
     }
 
     # Suggested questions based on meeting content
@@ -229,9 +232,9 @@ def _build_chatbot_context(summary: dict) -> dict:
             suggested.append(f"What are {top}'s action items?")
         suggested.append("List all action items and their owners.")
     if topics:
-        suggested.append(f"Summarize the '{topics[0]['title']}' discussion.")
+        suggested.append(f"Summarize the '{topics[0].get('title', 'first topic')}' discussion.")
     if len(topics) > 1:
-        suggested.append(f"What was the outcome of the '{topics[-1]['title']}' segment?")
+        suggested.append(f"What was the outcome of the '{topics[-1].get('title', 'last topic')}' segment?")
 
     # Fallback suggestions if meeting had little content
     if not suggested:
@@ -414,14 +417,24 @@ def generate_summary(
 
     # Inject slide_ids into topics (video pipeline only)
     topics = llm_out.get("topics", [])
+    # Ensure every topic has a topic_id — LLM occasionally omits it
+    for i, t in enumerate(topics):
+        if not t.get("topic_id"):
+            t["topic_id"] = f"topic_{i+1:03d}"
+        if not t.get("start_time") and t.get("start_time") != 0:
+            t["start_time"] = 0.0
+        if not t.get("end_time"):
+            t["end_time"] = t.get("start_time", 0.0)
+        t.setdefault("duration_seconds", max(0.0, t["end_time"] - t["start_time"]))
+
     if has_slides and slides:
         slide_by_topic = {}
         for sl in slides:
             tid = sl.get("topic_id")
             if tid:
-                slide_by_topic.setdefault(tid, []).append(sl["slide_id"])
+                slide_by_topic.setdefault(tid, []).append(sl.get("slide_id", ""))
         for t in topics:
-            t["slide_ids"] = slide_by_topic.get(t["topic_id"], [])
+            t["slide_ids"] = slide_by_topic.get(t.get("topic_id", ""), [])
     else:
         for t in topics:
             t.setdefault("slide_ids", [])
