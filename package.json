@@ -1,0 +1,14 @@
+{
+  "name": "botzilla",
+  "version": "1.0.0",
+  "description": "Botzilla — AI Meeting Summarizer DOCX Generator",
+  "main": "models/generate_docx.js",
+  "scripts": {
+    "docx": "node models/generate_docx.js"
+  },
+  "dependencies": {
+    "docx": "^9.0.0"
+  },
+  "author": "Botzilla Team",
+  "license": "MIT"
+}

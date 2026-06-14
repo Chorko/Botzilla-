@@ -1,0 +1,19 @@
+numpy<2
+torch
+torchvision
+torchaudio
+whisperx @ git+https://github.com/m-bain/whisperx.git
+pyannote.audio>=3.1
+requests
+python-dotenv
+google-genai
+groq
+fastapi[standard]
+uvicorn[standard]
+python-multipart
+supabase
+opencv-python
+Pillow
+easyocr
+rapidfuzz
+pydub

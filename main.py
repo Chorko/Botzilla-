@@ -1,0 +1,224 @@
+"""
+Botzilla — Pipeline Orchestrator
+Routes input files through the appropriate pipeline stages.
+
+Usage:
+    python main.py <audio_or_video_file> [--output-dir <dir>] [--whisper-model <model>]
+
+Pipeline A (Audio):
+    audio_engine.py → cleaner.py → summary_model.py → generate_docx.js
+
+Pipeline B (Video):
+    video_processor.py (extract audio + frames)
+    → audio_engine.py → cleaner.py
+    → smart_slide.py (uses cleaner context timestamps)
+    → summary_model.py → generate_docx.js
+"""
+
+import sys
+import os
+import uuid
+import json
+import time
+import argparse
+import subprocess
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from config.settings import (
+    OUTPUT_DIR, RAW_TRANSCRIPTS_DIR, CLEANED_TRANSCRIPTS_DIR,
+    SUMMARIES_DIR, DOCUMENTS_DIR, HF_TOKEN, GROQ_API_KEY,
+    GEMINI_API_KEY, WHISPER_MODEL,
+)
+
+
+# ──────────────────────────────────────────────
+# File type detection
+# ──────────────────────────────────────────────
+
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".wmv"}
+
+
+def detect_input_type(file_path: str) -> str:
+    """Detect whether input is audio or video based on extension."""
+    ext = Path(file_path).suffix.lower()
+    if ext in AUDIO_EXTENSIONS:
+        return "audio"
+    elif ext in VIDEO_EXTENSIONS:
+        return "video"
+    else:
+        raise ValueError(f"Unsupported file format: {ext}")
+
+
+# ──────────────────────────────────────────────
+# Pipeline stages
+# ──────────────────────────────────────────────
+
+def run_audio_pipeline(input_file: str, meeting_id: str, output_dir: Path) -> dict:
+    """
+    Stage 1: Audio → Schema 1 (Raw Transcript)
+    Stage 2: Schema 1 → Schema 2 (Cleaner Output)
+    Stage 3: Schema 2 → Schema 3 (Summary JSON)
+    Stage 4: Schema 3 → .docx
+    """
+    from audio.audio_engine import process_audio
+    from models.cleaner import clean_transcript
+    from models.summary_model import generate_summary
+
+    # Stage 1: Transcribe + Diarize
+    print(f"\n{'='*60}")
+    print(f"[STAGE 1/4] Audio Engine — Transcription & Diarization")
+    print(f"{'='*60}")
+    raw_transcript = process_audio(input_file, meeting_id)
+
+    raw_path = output_dir / f"{meeting_id}_raw.json"
+    with open(raw_path, "w", encoding="utf-8") as f:
+        json.dump(raw_transcript, f, indent=2, ensure_ascii=False)
+    print(f"[✓] Raw transcript saved: {raw_path}")
+
+    # Stage 2: Clean
+    print(f"\n{'='*60}")
+    print(f"[STAGE 2/4] Cleaner — LLM Call #1")
+    print(f"{'='*60}")
+    cleaned = clean_transcript(raw_transcript)
+
+    cleaned_path = output_dir / f"{meeting_id}_cleaned.json"
+    with open(cleaned_path, "w", encoding="utf-8") as f:
+        json.dump(cleaned, f, indent=2, ensure_ascii=False)
+    print(f"[✓] Cleaned transcript saved: {cleaned_path}")
+
+    # Stage 3: Summarize
+    print(f"\n{'='*60}")
+    print(f"[STAGE 3/4] Summary Model — LLM Call #2 + App Enrichment")
+    print(f"{'='*60}")
+    summary = generate_summary(cleaned, source_type="audio")
+
+    summary_path = output_dir / f"{meeting_id}_summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+    print(f"[✓] Summary JSON saved: {summary_path}")
+
+    # Stage 4: DOCX
+    print(f"\n{'='*60}")
+    print(f"[STAGE 4/4] DOCX Generator")
+    print(f"{'='*60}")
+    docx_path = output_dir / f"{meeting_id}_summary.docx"
+    generate_docx(str(summary_path), str(docx_path))
+
+    return summary
+
+
+def run_video_pipeline(input_file: str, meeting_id: str, output_dir: Path) -> dict:
+    """
+    Full video pipeline:
+    1. Extract audio → run audio pipeline (stages 1-3)
+    2. Smart slide extraction using cleaner context timestamps
+    3. Enrich summary with slides
+    4. Generate DOCX
+    """
+    # TODO: Implement in Phase 4
+    raise NotImplementedError("Video pipeline is planned for Phase 4")
+
+
+def generate_docx(summary_json_path: str, output_docx_path: str):
+    """Run the Node.js DOCX generator."""
+    models_dir = Path(__file__).resolve().parent / "models"
+    docx_script = models_dir / "generate_docx.js"
+
+    if not docx_script.exists():
+        print(f"[✗] DOCX generator not found: {docx_script}")
+        return
+
+    result = subprocess.run(
+        ["node", str(docx_script), summary_json_path, output_docx_path],
+        capture_output=True, text=True,
+    )
+
+    if result.returncode == 0:
+        print(result.stdout)
+    else:
+        print(f"[✗] DOCX generation failed:")
+        print(result.stderr)
+
+
+# ──────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Botzilla — AI Meeting Summarizer Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py meeting.mp3
+  python main.py lecture.mp4 --output-dir ./results
+  python main.py interview.wav --whisper-model base
+        """,
+    )
+    parser.add_argument("input_file", help="Path to audio or video file")
+    parser.add_argument("--output-dir", "-o", default=None, help="Output directory (default: output/<meeting_id>)")
+    parser.add_argument("--whisper-model", "-m", default=None, help="WhisperX model size (tiny/base/small/medium/large-v3)")
+    parser.add_argument("--meeting-id", default=None, help="Custom meeting ID (default: auto-generated UUID)")
+    args = parser.parse_args()
+
+    # Validate input
+    input_path = Path(args.input_file).resolve()
+    if not input_path.exists():
+        print(f"[✗] File not found: {input_path}")
+        sys.exit(1)
+
+    # Detect type
+    input_type = detect_input_type(str(input_path))
+    meeting_id = args.meeting_id or str(uuid.uuid4())[:8]
+
+    # Output directory
+    if args.output_dir:
+        output_dir = Path(args.output_dir).resolve()
+    else:
+        output_dir = OUTPUT_DIR / meeting_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Override whisper model if specified
+    if args.whisper_model:
+        import config.settings as cfg
+        cfg.WHISPER_MODEL = args.whisper_model
+
+    # Run pipeline
+    print(f"\n⚡ BOTZILLA — AI Meeting Summarizer")
+    print(f"   Input:      {input_path.name}")
+    print(f"   Type:       {input_type}")
+    print(f"   Meeting ID: {meeting_id}")
+    print(f"   Output:     {output_dir}")
+    print(f"   Whisper:    {WHISPER_MODEL}")
+
+    start = time.time()
+
+    try:
+        if input_type == "audio":
+            summary = run_audio_pipeline(str(input_path), meeting_id, output_dir)
+        else:
+            summary = run_video_pipeline(str(input_path), meeting_id, output_dir)
+
+        elapsed = time.time() - start
+        print(f"\n{'='*60}")
+        print(f"✅ BOTZILLA COMPLETE — {elapsed:.1f}s")
+        print(f"   Output: {output_dir}")
+        print(f"{'='*60}")
+
+    except NotImplementedError as e:
+        print(f"\n[✗] {e}")
+        sys.exit(1)
+    except Exception as e:
+        elapsed = time.time() - start
+        print(f"\n[✗] Pipeline failed after {elapsed:.1f}s: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

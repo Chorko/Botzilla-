@@ -1,0 +1,41 @@
+# Botzilla — .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+package-lock.json
+
+# Output files (local processing artifacts)
+output/raw_transcripts/
+output/cleaned_transcripts/
+output/summaries/
+output/documents/
+output/*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+temp_*/
+*.wav
