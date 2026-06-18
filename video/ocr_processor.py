@@ -125,19 +125,20 @@ def process_frame(frame_path: str, timestamp: float) -> dict:
         h, w = gray.shape
         upscaled = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_LANCZOS4)
 
-        # OCR
         reader = _get_reader()
-        ocr_result = reader.readtext(upscaled, detail=1, paragraph=True)
 
-        texts = []
-        confidences = []
-        for detection in ocr_result:
-            if len(detection) >= 2:
-                text = detection[1].strip() if isinstance(detection[1], str) else ""
-                conf = float(detection[2]) if len(detection) > 2 else 0.5
-                if text:
-                    texts.append(text)
-                    confidences.append(conf)
+        # EasyOCR: paragraph=True and detail=1 are mutually exclusive.
+        # paragraph=True returns (text,) tuples — no bbox/confidence.
+        # detail=1    returns (bbox, text, conf) tuples — no merging.
+        # Strategy: use detail=1 for confidence scoring, paragraph=True for clean text.
+        detail_result = reader.readtext(upscaled, detail=1, paragraph=False)
+        para_result   = reader.readtext(upscaled, detail=0, paragraph=True)
+
+        # Confidence from detail pass
+        confidences = [float(det[2]) for det in detail_result if len(det) >= 3]
+
+        # Clean merged text from paragraph pass
+        texts = [t.strip() for t in para_result if isinstance(t, str) and t.strip()]
 
         result["ocr_text"] = "\n".join(texts)
         result["ocr_confidence"] = round(
