@@ -47,6 +47,35 @@ from audio.preprocessor import convert_to_wav, get_audio_duration, get_file_size
 
 
 # ──────────────────────────────────────────────
+# Model singletons — loaded once, reused across requests
+# ──────────────────────────────────────────────
+
+# WhisperX model cache: keyed by (model_name, device) so switching models still works
+_whisper_cache: dict = {}
+_diarize_cache: dict = {}
+
+
+def _get_whisper_model(model_name: str, device: str, compute_type: str):
+    """Return a cached WhisperX model, loading it on first call."""
+    key = (model_name, device)
+    if key not in _whisper_cache:
+        print(f"[audio_engine] Loading WhisperX {model_name} ({device}) — one-time startup...")
+        _whisper_cache[key] = whisperx.load_model(model_name, device, compute_type=compute_type, language=None)
+        print(f"[audio_engine] Model loaded and cached.")
+    return _whisper_cache[key]
+
+
+def _get_diarize_pipeline(token: str, device: str):
+    """Return a cached Pyannote diarization pipeline, loading it on first call."""
+    key = device
+    if key not in _diarize_cache:
+        print(f"[audio_engine] Loading Pyannote diarization pipeline ({device}) — one-time startup...")
+        _diarize_cache[key] = whisperx.diarize.DiarizationPipeline(token=token, device=device)
+        print(f"[audio_engine] Diarization pipeline cached.")
+    return _diarize_cache[key]
+
+
+# ──────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────
 
@@ -332,12 +361,7 @@ def process_audio(
 
     # ── Step 2: Transcribe with WhisperX ──
     print(f"[audio_engine] Step 2/4: Transcribing with WhisperX ({WHISPER_MODEL})...")
-    model = whisperx.load_model(
-        WHISPER_MODEL,
-        device,
-        compute_type=compute_type,
-        language="en",  # Let WhisperX auto-detect, but hint English for multilingual meetings
-    )
+    model = _get_whisper_model(WHISPER_MODEL, device, compute_type)
     audio = whisperx.load_audio(wav_path)
     result = model.transcribe(audio, batch_size=WHISPER_BATCH_SIZE)
 
@@ -371,10 +395,7 @@ def process_audio(
             "Then add HF_TOKEN to .env"
         )
 
-    diarize_pipeline = whisperx.diarize.DiarizationPipeline(
-        token=HF_TOKEN,
-        device=device,
-    )
+    diarize_pipeline = _get_diarize_pipeline(HF_TOKEN, device)
     diarize_result = diarize_pipeline(
         audio,
         min_speakers=MIN_SPEAKERS,

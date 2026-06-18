@@ -74,20 +74,30 @@ FFMPEG_PATH  = _resolve_binary("ffmpeg")
 FFPROBE_PATH = _resolve_binary("ffprobe")
 
 # ──────────────────────────────────────────────
+# GPU DETECTION (shared across all stages)
+# ──────────────────────────────────────────────
+
+_HAS_GPU = False
+try:
+    import torch as _torch
+    _HAS_GPU = _torch.cuda.is_available()
+except ImportError:
+    pass
+
+# ──────────────────────────────────────────────
 # WHISPERX & DIARIZATION
 # ──────────────────────────────────────────────
 
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "large-v3")  # "tiny", "base", "small", "medium", "large-v3"
-WHISPER_BATCH_SIZE = 16
-# Auto-detect: float16 on CUDA GPU, int8 on CPU — avoids crash on CPU-only machines
-def _detect_compute_type() -> str:
-    try:
-        import torch
-        return "float16" if torch.cuda.is_available() else "int8"
-    except ImportError:
-        return "int8"
+# On GPU: use large-v3 for best quality (2.5× real-time).
+# On CPU: fall back to small (~10× real-time). large-v3 on CPU = ~80× real-time.
+# Override with WHISPER_MODEL env var at any time.
+_DEFAULT_WHISPER = "large-v3" if _HAS_GPU else "small"
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", _DEFAULT_WHISPER)
+WHISPER_BATCH_SIZE = 16 if _HAS_GPU else 4
 
-WHISPER_COMPUTE_TYPE = _detect_compute_type()
+# Auto-detect: float16 on CUDA GPU, int8 on CPU
+WHISPER_COMPUTE_TYPE = "float16" if _HAS_GPU else "int8"
+
 DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 MAX_SPEAKERS = 8
 MIN_SPEAKERS = 1
@@ -148,13 +158,13 @@ SLIDE_WINDOW_PERCENTAGE = 0.05  # 5% of context duration
 SLIDE_WINDOW_CAP_SECONDS = 180  # 3 minute cap
 
 # Frame extraction
-FRAME_HEARTBEAT_INTERVAL = 60  # seconds between forced frame captures
-SCENE_CHANGE_THRESHOLD = 0.3  # FFmpeg scene detection sensitivity (0.0 - 1.0)
+FRAME_HEARTBEAT_INTERVAL = 30    # seconds between forced frame captures (was 60 — too sparse)
+SCENE_CHANGE_THRESHOLD = 0.02   # FFmpeg scene change sensitivity — 0.02 catches slide flips (was 0.3 = missed almost all)
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 360
 
-# OCR
-OCR_LANGUAGES = ["en"]
+# OCR — include Hindi for Hinglish slide support
+OCR_LANGUAGES = ["en", "hi"]    # EasyOCR natively supports Hindi (was ["en"] only)
 OCR_SIMILARITY_THRESHOLD = 90.0  # fuzzy dedup threshold (0-100)
 
 # ──────────────────────────────────────────────

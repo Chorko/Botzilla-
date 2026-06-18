@@ -116,14 +116,89 @@ def run_audio_pipeline(input_file: str, meeting_id: str, output_dir: Path) -> di
 
 def run_video_pipeline(input_file: str, meeting_id: str, output_dir: Path) -> dict:
     """
-    Full video pipeline:
-    1. Extract audio → run audio pipeline (stages 1-3)
-    2. Smart slide extraction using cleaner context timestamps
-    3. Enrich summary with slides
-    4. Generate DOCX
+    Full video pipeline (Pipeline B):
+    1. video_processor.py — extract audio WAV + scene-change frames
+    2. audio_engine.py   — transcribe + diarize → Schema 1
+    3. cleaner.py        — LLM Call #1 → Schema 2
+    4. ocr_processor.py  — OCR on extracted frames
+    5. smart_slide.py    — select best slide per context boundary → slides[]
+    6. summary_model.py  — LLM Call #2 + app enrichment → Schema 3
+    7. generate_docx.js  — Schema 3 → .docx (with inline slide images)
     """
-    # TODO: Implement in Phase 4
-    raise NotImplementedError("Video pipeline is planned for Phase 4")
+    from video.video_processor import process_video
+    from audio.audio_engine import process_audio
+    from models.cleaner import clean_transcript
+    from video.ocr_processor import process_frames
+    from video.smart_slide import select_slides
+    from models.summary_model import generate_summary
+
+    slides_dir = output_dir / "slides"
+
+    # Stage 1: Extract audio + frames
+    print(f"\n{'='*60}")
+    print(f"[STAGE 1/6] Video Processor — Splitting audio & frames")
+    print(f"{'='*60}")
+    video_result = process_video(input_file, str(output_dir))
+    audio_path = video_result["audio_path"]
+    frames = video_result["frames"]
+    print(f"[✓] Audio: {Path(audio_path).name} | Frames: {len(frames)}")
+
+    # Stage 2: Transcribe + Diarize
+    print(f"\n{'='*60}")
+    print(f"[STAGE 2/6] Audio Engine — Transcription & Diarization")
+    print(f"{'='*60}")
+    raw_transcript = process_audio(audio_path, meeting_id, source_type="video",
+                                   extracted_audio_path=audio_path)
+
+    raw_path = output_dir / f"{meeting_id}_raw.json"
+    with open(raw_path, "w", encoding="utf-8") as f:
+        json.dump(raw_transcript, f, indent=2, ensure_ascii=False)
+    print(f"[✓] Raw transcript saved: {raw_path}")
+
+    # Stage 3: Clean
+    print(f"\n{'='*60}")
+    print(f"[STAGE 3/6] Cleaner — LLM Call #1")
+    print(f"{'='*60}")
+    cleaned = clean_transcript(raw_transcript)
+
+    cleaned_path = output_dir / f"{meeting_id}_cleaned.json"
+    with open(cleaned_path, "w", encoding="utf-8") as f:
+        json.dump(cleaned, f, indent=2, ensure_ascii=False)
+    print(f"[✓] Cleaned transcript saved: {cleaned_path}")
+
+    # Stage 4: OCR extracted frames
+    print(f"\n{'='*60}")
+    print(f"[STAGE 4/6] OCR Processor — Extracting slide text from frames")
+    print(f"{'='*60}")
+    ocr_frames = process_frames(frames) if frames else []
+    print(f"[✓] OCR complete: {len(ocr_frames)} frames processed")
+
+    # Stage 5: Smart slide selection
+    print(f"\n{'='*60}")
+    print(f"[STAGE 5/6] Smart Slide Selector — Best frame per context")
+    print(f"{'='*60}")
+    slides = select_slides(cleaned, ocr_frames, str(slides_dir), meeting_id)
+    print(f"[✓] {len(slides)} slides selected")
+
+    # Stage 6: Summarize (with slides)
+    print(f"\n{'='*60}")
+    print(f"[STAGE 6/6] Summary Model — LLM Call #2 + App Enrichment")
+    print(f"{'='*60}")
+    summary = generate_summary(cleaned, source_type="video", slides=slides)
+
+    summary_path = output_dir / f"{meeting_id}_summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+    print(f"[✓] Summary JSON saved: {summary_path}")
+
+    # DOCX
+    print(f"\n{'='*60}")
+    print(f"[DOCX] Generating Word document with embedded slides...")
+    print(f"{'='*60}")
+    docx_path = output_dir / f"{meeting_id}_summary.docx"
+    generate_docx(str(summary_path), str(docx_path))
+
+    return summary
 
 
 def generate_docx(summary_json_path: str, output_docx_path: str):

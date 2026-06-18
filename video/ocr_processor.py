@@ -37,8 +37,9 @@ def _get_reader():
     global _reader
     if _reader is None:
         import easyocr
-        _reader = easyocr.Reader(OCR_LANGUAGES, gpu=False)
-        print("[ocr_processor] EasyOCR initialized")
+        from config.settings import _HAS_GPU
+        _reader = easyocr.Reader(OCR_LANGUAGES, gpu=_HAS_GPU)
+        print(f"[ocr_processor] EasyOCR initialized (gpu={'yes' if _HAS_GPU else 'no'})")
     return _reader
 
 

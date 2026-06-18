@@ -428,13 +428,17 @@ def generate_summary(
         t.setdefault("duration_seconds", max(0.0, t["end_time"] - t["start_time"]))
 
     if has_slides and slides:
-        slide_by_topic = {}
-        for sl in slides:
-            tid = sl.get("topic_id")
-            if tid:
-                slide_by_topic.setdefault(tid, []).append(sl.get("slide_id", ""))
+        # Match slides to topics by timestamp overlap, NOT by ID string.
+        # smart_slide.py uses ctx_id from Schema 2 (e.g. "ctx_001") but the
+        # LLM generates topic_ids independently (e.g. "topic_001") — they never match.
+        # Timestamp-based matching is authoritative and schema-correct.
         for t in topics:
-            t["slide_ids"] = slide_by_topic.get(t.get("topic_id", ""), [])
+            t_start = t.get("start_time", 0.0)
+            t_end   = t.get("end_time", 0.0)
+            t["slide_ids"] = [
+                sl["slide_id"] for sl in slides
+                if t_start <= sl.get("timestamp", -1) <= t_end
+            ]
     else:
         for t in topics:
             t.setdefault("slide_ids", [])
