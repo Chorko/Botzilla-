@@ -133,9 +133,13 @@ def select_slides(
         ]
 
         if not candidates:
-            # Widen search slightly — take nearest frame outside window
+            # Widen search to 2× window — take nearest unused frame within reasonable distance.
+            # No unlimited fallback: a frame from the wrong section of the video is worse than no slide.
+            max_fallback_distance = window_sec * 2
             nearest = min(
-                (f for f in sorted_frames if f.get("path") not in used_frame_paths),
+                (f for f in sorted_frames
+                 if f.get("path") not in used_frame_paths
+                 and abs(f["timestamp"] - start_time) <= max_fallback_distance),
                 key=lambda f: abs(f["timestamp"] - start_time),
                 default=None,
             )

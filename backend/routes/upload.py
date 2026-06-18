@@ -143,7 +143,8 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
         import traceback
         err = str(e)
         emit(f"error:{err}")
-        db.update_meeting_status(meeting_id, "failed", error=err)
+        try: db.update_meeting_status(meeting_id, "failed", error=err)
+        except Exception: pass
         print(f"[pipeline:{meeting_id}] FAILED: {err}")
         traceback.print_exc()
 
@@ -192,16 +193,25 @@ async def stream_progress(meeting_id: str):
     """SSE endpoint — streams real-time pipeline progress."""
     async def event_generator():
         sent = 0
-        while True:
-            messages = _progress.get(meeting_id, [])
-            for msg in messages[sent:]:
-                yield f"data: {msg}\n\n"
-                sent += 1
-                if msg.startswith("done:") or msg.startswith("error:"):
-                    return
-            await asyncio.sleep(0.5)
+        try:
+            while True:
+                messages = _progress.get(meeting_id, [])
+                for msg in messages[sent:]:
+                    yield f"data: {msg}\n\n"
+                    sent += 1
+                    if msg.startswith("done:") or msg.startswith("error:"):
+                        return
+                await asyncio.sleep(0.5)
+        finally:
+            # Clean up progress store when client disconnects or stream ends
+            _cleanup_progress(meeting_id)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+def _cleanup_progress(meeting_id: str):
+    """Remove meeting from _progress store after stream ends (prevents memory leak)."""
+    _progress.pop(meeting_id, None)
 
 
 @router.get("/meetings")

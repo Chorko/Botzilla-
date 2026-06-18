@@ -53,6 +53,7 @@ from audio.preprocessor import convert_to_wav, get_audio_duration, get_file_size
 # WhisperX model cache: keyed by (model_name, device) so switching models still works
 _whisper_cache: dict = {}
 _diarize_cache: dict = {}
+_align_cache:   dict = {}   # keyed by (language_code, device)
 
 
 def _get_whisper_model(model_name: str, device: str, compute_type: str):
@@ -63,6 +64,16 @@ def _get_whisper_model(model_name: str, device: str, compute_type: str):
         _whisper_cache[key] = whisperx.load_model(model_name, device, compute_type=compute_type, language=None)
         print(f"[audio_engine] Model loaded and cached.")
     return _whisper_cache[key]
+
+
+def _get_align_model(language_code: str, device: str):
+    """Return a cached WhisperX align model (language-specific), loading it on first call."""
+    key = (language_code, device)
+    if key not in _align_cache:
+        print(f"[audio_engine] Loading align model for '{language_code}' ({device})...")
+        _align_cache[key] = whisperx.load_align_model(language_code=language_code, device=device)
+        print(f"[audio_engine] Align model cached.")
+    return _align_cache[key]
 
 
 def _get_diarize_pipeline(token: str, device: str):
@@ -377,10 +388,7 @@ def process_audio(
 
     # ── Step 3: Align (word timestamps, but we only use segment-level) ──
     print("[audio_engine] Step 3/4: Aligning transcription...")
-    align_model, align_metadata = whisperx.load_align_model(
-        language_code=language,
-        device=device,
-    )
+    align_model, align_metadata = _get_align_model(language, device)
     result = whisperx.align(
         result["segments"],
         align_model,

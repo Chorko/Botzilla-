@@ -155,6 +155,10 @@ def extract_frames(
                 chunk_name,
             ])
 
+            # Snapshot files already in temp_dir before extraction, so we only
+            # pick up files created by THIS chunk (not leftover from previous chunks)
+            files_before = set(temp_dir.glob("frame_*.png"))
+
             # Extract frames from chunk
             frame_pattern = str(temp_dir / "frame_%04d.png")
             extract_result = _run([
@@ -173,9 +177,12 @@ def extract_frames(
                     if m:
                         chunk_times.append(float(m.group(1)))
 
-            # Match extracted frame files to timestamps
-            frame_files = sorted(f for f in temp_dir.iterdir() if f.name.startswith("frame_"))
-            for idx, frame_file in enumerate(frame_files):
+            # Only consider frames that were NEW in this chunk
+            new_frame_files = sorted(
+                f for f in temp_dir.glob("frame_*.png")
+                if f not in files_before
+            )
+            for idx, frame_file in enumerate(new_frame_files):
                 if idx >= len(chunk_times):
                     break
                 global_ts = chunk_start + chunk_times[idx]
