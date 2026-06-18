@@ -67,7 +67,8 @@ def _get_whisper_model(model_name: str, device: str, compute_type: str):
 
 def _get_diarize_pipeline(token: str, device: str):
     """Return a cached Pyannote diarization pipeline, loading it on first call."""
-    key = device
+    # Key includes a hash of the token so token rotation forces a reload
+    key = (device, token[:8] if token else "")
     if key not in _diarize_cache:
         print(f"[audio_engine] Loading Pyannote diarization pipeline ({device}) — one-time startup...")
         _diarize_cache[key] = whisperx.diarize.DiarizationPipeline(token=token, device=device)
@@ -354,8 +355,13 @@ def process_audio(
     file_size = get_file_size(input_path)
 
     # ── Step 1: Preprocess — convert to 16kHz WAV ──
-    print("[audio_engine] Step 1/4: Preprocessing audio to 16kHz WAV...")
-    wav_path = convert_to_wav(input_path)
+    # If the video pipeline already extracted a 16kHz WAV, skip re-conversion.
+    if extracted_audio_path and Path(extracted_audio_path).exists():
+        wav_path = str(Path(extracted_audio_path).resolve())
+        print(f"[audio_engine] Step 1/4: Using pre-extracted audio: {Path(wav_path).name}")
+    else:
+        print("[audio_engine] Step 1/4: Converting audio to 16kHz WAV...")
+        wav_path = convert_to_wav(input_path)
     total_duration = get_audio_duration(wav_path)
     print(f"[audio_engine] Duration: {total_duration:.1f}s ({total_duration/60:.1f} min)")
 

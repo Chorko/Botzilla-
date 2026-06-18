@@ -51,7 +51,8 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
 
         # ── Stage 1: Audio Engine ──
         emit("stage:audio_engine")
-        db.update_meeting_status(meeting_id, "processing_audio")
+        try: db.update_meeting_status(meeting_id, "processing_audio")
+        except Exception: pass
 
         if source_type == "video":
             from video.video_processor import process_video
@@ -65,16 +66,19 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
 
         from audio.audio_engine import process_audio
         emit("Transcribing and diarizing...")
-        schema1 = process_audio(audio_path, meeting_id, source_type=source_type)
+        schema1 = process_audio(audio_path, meeting_id, source_type=source_type,
+                                extracted_audio_path=audio_path if source_type == "video" else None)
 
         # Save Schema 1
         raw_path = out_dir / f"{meeting_id}_raw.json"
         raw_path.write_text(json.dumps(schema1, ensure_ascii=False, indent=2), encoding='utf-8')
-        db.save_raw_transcript(meeting_id, schema1)
+        try: db.save_raw_transcript(meeting_id, schema1)
+        except Exception: pass
 
         # ── Stage 2: Cleaner ──
         emit("stage:cleaner")
-        db.update_meeting_status(meeting_id, "cleaning")
+        try: db.update_meeting_status(meeting_id, "cleaning")
+        except Exception: pass
         emit("Running LLM Call #1 (Cleaner)...")
 
         from models.cleaner import clean_transcript
@@ -82,7 +86,8 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
 
         cleaned_path = out_dir / f"{meeting_id}_cleaned.json"
         cleaned_path.write_text(json.dumps(schema2, ensure_ascii=False, indent=2), encoding='utf-8')
-        db.save_cleaned_transcript(meeting_id, schema2)
+        try: db.save_cleaned_transcript(meeting_id, schema2)
+        except Exception: pass
 
         # ── Stage 3: Video slides (if applicable) ──
         slides = []
@@ -100,7 +105,8 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
 
         # ── Stage 4: Summary ──
         emit("stage:summary")
-        db.update_meeting_status(meeting_id, "summarizing")
+        try: db.update_meeting_status(meeting_id, "summarizing")
+        except Exception: pass
         emit("Running LLM Call #2 (Summary)...")
 
         from models.summary_model import generate_summary
@@ -108,11 +114,13 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
 
         summary_path = out_dir / f"{meeting_id}_summary.json"
         summary_path.write_text(json.dumps(schema3, ensure_ascii=False, indent=2), encoding='utf-8')
-        db.save_summary(meeting_id, schema3)
+        try: db.save_summary(meeting_id, schema3)
+        except Exception: pass
 
         # ── Stage 5: DOCX ──
         emit("stage:docx")
-        db.update_meeting_status(meeting_id, "generating_docx")
+        try: db.update_meeting_status(meeting_id, "generating_docx")
+        except Exception: pass
         emit("Generating Word document...")
 
         import subprocess
@@ -126,7 +134,8 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
             emit(f"DOCX warning: {result.stderr[:200]}")
 
         # ── Finalize ──
-        db.update_meeting_metadata(meeting_id, schema3)
+        try: db.update_meeting_metadata(meeting_id, schema3)
+        except Exception: pass
         emit("stage:complete")
         emit(f"done:{meeting_id}")
 

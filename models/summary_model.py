@@ -421,9 +421,10 @@ def generate_summary(
     for i, t in enumerate(topics):
         if not t.get("topic_id"):
             t["topic_id"] = f"topic_{i+1:03d}"
-        if not t.get("start_time") and t.get("start_time") != 0:
+        # Explicit None check — 0.0 is a valid start_time for the first topic
+        if t.get("start_time") is None:
             t["start_time"] = 0.0
-        if not t.get("end_time"):
+        if t.get("end_time") is None:
             t["end_time"] = t.get("start_time", 0.0)
         t.setdefault("duration_seconds", max(0.0, t["end_time"] - t["start_time"]))
 

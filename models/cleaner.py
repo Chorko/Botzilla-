@@ -84,7 +84,7 @@ def _preprocess_for_cleaner(schema1: dict) -> dict:
             current["confidence"] = round((current["confidence"] + seg["confidence"]) / 2, 3)
             current["is_low_confidence"] = current["confidence"] < 0.70
             current["low_confidence_flags"] = list(
-                set(current["low_confidence_flags"] + seg["low_confidence_flags"])
+                set(current.get("low_confidence_flags", []) + seg.get("low_confidence_flags", []))
             )
         else:
             merged.append(current)

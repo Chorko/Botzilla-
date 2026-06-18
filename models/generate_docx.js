@@ -105,9 +105,6 @@ function dn(speakerId, participants = []) {
 function priColor(p) {
   return { high: C.red, medium: C.amber, low: C.green }[p] || C.grey;
 }
-function priBg(p) {
-  return { high: C.redBg, medium: C.amberBg, low: C.greenBg }[p] || C.rowAlt;
-}
 function priLabel(p) {
   return { high: '● High', medium: '● Medium', low: '● Low' }[p] || (p || '—');
 }
