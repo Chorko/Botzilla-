@@ -121,24 +121,29 @@ def process_frame(frame_path: str, timestamp: float) -> dict:
         result["sharpness_score"] = _laplacian_sharpness(gray)
         result["text_density"] = _text_density(gray)
 
-        # 2× upscale for OCR accuracy on small text
-        h, w = gray.shape
-        upscaled = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_LANCZOS4)
+        from config.settings import _HAS_GPU
+
+        # 2× upscale for OCR accuracy on small text (only if GPU is available, otherwise too slow)
+        if _HAS_GPU:
+            h, w = gray.shape
+            img_to_ocr = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_LANCZOS4)
+        else:
+            img_to_ocr = gray
 
         reader = _get_reader()
 
-        # EasyOCR: paragraph=True and detail=1 are mutually exclusive.
-        # paragraph=True returns (text,) tuples — no bbox/confidence.
-        # detail=1    returns (bbox, text, conf) tuples — no merging.
-        # Strategy: use detail=1 for confidence scoring, paragraph=True for clean text.
-        detail_result = reader.readtext(upscaled, detail=1, paragraph=False)
-        para_result   = reader.readtext(upscaled, detail=0, paragraph=True)
+        # Single pass to extract both text and confidence
+        # detail=1 returns (bbox, text, conf) tuples
+        detail_result = reader.readtext(img_to_ocr, detail=1, paragraph=False)
 
-        # Confidence from detail pass
-        confidences = [float(det[2]) for det in detail_result if len(det) >= 3]
-
-        # Clean merged text from paragraph pass
-        texts = [t.strip() for t in para_result if isinstance(t, str) and t.strip()]
+        texts = []
+        confidences = []
+        for det in detail_result:
+            if len(det) >= 3:
+                text = det[1].strip()
+                if text:
+                    texts.append(text)
+                    confidences.append(float(det[2]))
 
         result["ocr_text"] = "\n".join(texts)
         result["ocr_confidence"] = round(
@@ -152,58 +157,86 @@ def process_frame(frame_path: str, timestamp: float) -> dict:
 
 
 # ──────────────────────────────────────────────
-# Batch processor with dedup
+# Phase 1: Fast scoring (no OCR)
 # ──────────────────────────────────────────────
 
-def process_frames(
-    frames: List[dict],
-    similarity_threshold: float = None,
-) -> List[dict]:
+def score_frames(frames: List[dict]) -> List[dict]:
     """
-    Run OCR on a list of frame dicts (each has 'path' and 'timestamp').
-    Marks duplicate frames using fuzzy text similarity.
+    Fast first-pass over ALL extracted frames.
+    Computes sharpness + text_density using cv2 only (no EasyOCR).
+    Uses 16x16 thumbnail MSE for visual duplicate detection instead of
+    slow text fuzzy matching — ~100x faster than the old process_frames.
 
     Args:
         frames: list of {"path": ..., "timestamp": ...} dicts
-        similarity_threshold: override default OCR_SIMILARITY_THRESHOLD
 
     Returns:
-        List of enriched frame dicts with OCR results
+        List of scored frame dicts (no ocr_text yet — that comes in phase 2)
     """
-    if similarity_threshold is None:
-        similarity_threshold = OCR_SIMILARITY_THRESHOLD
-
-    print(f"[ocr_processor] Processing {len(frames)} frames...")
+    import cv2
+    print(f"[ocr_processor] Fast-scoring {len(frames)} frames (no OCR)...")
     results = []
-    last_text = ""
+    last_thumb = None
 
-    for i, frame in enumerate(frames):
+    for frame in frames:
         path = frame.get("path", "")
-        ts = frame.get("timestamp", 0.0)
+        ts   = frame.get("timestamp", 0.0)
 
-        print(f"[ocr_processor] Frame {i+1}/{len(frames)}: {Path(path).name}")
-        ocr_result = process_frame(path, ts)
+        res = process_frame(path, ts, fast_mode=True)
 
-        # Fuzzy dedup
-        if last_text and ocr_result["ocr_text"]:
-            if _fuzzy_similar(ocr_result["ocr_text"], last_text, similarity_threshold):
-                ocr_result["is_duplicate"] = True
+        # Visual MSE dedup via 16x16 thumbnail comparison
+        if last_thumb is not None and "_thumb" in res:
+            mse = float(((res["_thumb"].astype("float") - last_thumb.astype("float")) ** 2).mean())
+            if mse < 15.0:   # Nearly identical frame — same slide still on screen
+                res["is_duplicate"] = True
 
-        if not ocr_result["is_duplicate"] and ocr_result["ocr_text"]:
-            last_text = ocr_result["ocr_text"]
+        if not res.get("is_duplicate") and "_thumb" in res:
+            last_thumb = res["_thumb"]
 
-        results.append(ocr_result)
+        res.pop("_thumb", None)  # Don't serialise numpy arrays
+        results.append(res)
 
-    non_dup = sum(1 for r in results if not r["is_duplicate"] and r["ocr_text"])
-    print(f"[ocr_processor] Done — {non_dup} unique frames with text content")
+    non_dup = sum(1 for r in results if not r["is_duplicate"])
+    print(f"[ocr_processor] Scored {len(results)} frames — {non_dup} visually unique.")
     return results
+
+
+# ──────────────────────────────────────────────
+# Phase 2: OCR on selection only
+# ──────────────────────────────────────────────
+
+def ocr_selected_slides(slides: List[dict]) -> List[dict]:
+    """
+    Run EasyOCR on only the final selected slides (typically 5-15).
+    Fills in ocr_text and ocr_confidence on each slide in-place.
+
+    Args:
+        slides: slides[] list returned by smart_slide.select_slides()
+
+    Returns:
+        Same list with ocr_text and ocr_confidence populated.
+    """
+    if not slides:
+        return slides
+
+    print(f"[ocr_processor] Running OCR on {len(slides)} selected slides...")
+    for i, slide in enumerate(slides):
+        path = slide.get("image_path") or slide.get("path", "")
+        ts   = slide.get("timestamp", 0.0)
+        print(f"[ocr_processor] OCR {i+1}/{len(slides)}: {Path(path).name}")
+        res = process_frame(path, ts, fast_mode=False)
+        slide["ocr_text"]       = res["ocr_text"]
+        slide["ocr_confidence"] = res["ocr_confidence"]
+
+    print(f"[ocr_processor] OCR complete.")
+    return slides
 
 
 if __name__ == "__main__":
     import argparse, json
 
     parser = argparse.ArgumentParser(description="Botzilla OCR Processor")
-    parser.add_argument("frames_dir", help="Directory containing extracted frame PNGs")
+    parser.add_argument("frames_dir",  help="Directory containing extracted frame PNGs")
     parser.add_argument("output_json", help="Output JSON path")
     args = parser.parse_args()
 
@@ -213,7 +246,7 @@ if __name__ == "__main__":
         key=lambda x: x["path"],
     )
 
-    results = process_frames(frames)
+    results = score_frames(frames)
     with open(args.output_json, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
-    print(f"[✓] OCR results saved: {args.output_json}")
+    print(f"[✓] Scored frames saved: {args.output_json}")

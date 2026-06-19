@@ -93,15 +93,22 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
         slides = []
         if source_type == "video" and frames:
             emit("stage:slides")
-            from video.ocr_processor import process_frames
+            from video.ocr_processor import score_frames, ocr_selected_slides
             from video.smart_slide import select_slides
 
-            emit("Running OCR on extracted frames...")
-            ocr_frames = process_frames(frames)
+            # Phase 1: Fast visual scoring on all frames (no OCR — very fast)
+            emit("Fast-scoring frames (visual quality + dedup)...")
+            scored_frames = score_frames(frames)
 
+            # Phase 2: Smart slide selection (picks best frame per context)
             slides_dir = get_slides_dir(meeting_id, OUTPUT_DIR)
             emit("Selecting best slide per context...")
-            slides = select_slides(schema2, ocr_frames, str(slides_dir), meeting_id)
+            slides = select_slides(schema2, scored_frames, str(slides_dir), meeting_id)
+
+            # Phase 3: Run EasyOCR only on the selected slides (typically 5-15 slides)
+            if slides:
+                emit(f"Running OCR on {len(slides)} selected slides...")
+                slides = ocr_selected_slides(slides)
 
         # ── Stage 4: Summary ──
         emit("stage:summary")

@@ -82,7 +82,8 @@ def select_slides(
 
     Args:
         schema2: Cleaner Output (Schema 2) dict — provides context boundaries
-        ocr_frames: List of OCR-enriched frame dicts from ocr_processor.process_frames()
+        ocr_frames: List of scored frame dicts from ocr_processor.score_frames()
+                    (ocr_text is empty at this stage — OCR runs in ocr_selected_slides after selection)
                     Each has: path, timestamp, ocr_text, ocr_confidence,
                               sharpness_score, text_density, is_duplicate
         slides_storage_base: Base path for storing selected slide images

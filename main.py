@@ -128,7 +128,7 @@ def run_video_pipeline(input_file: str, meeting_id: str, output_dir: Path) -> di
     from video.video_processor import process_video
     from audio.audio_engine import process_audio
     from models.cleaner import clean_transcript
-    from video.ocr_processor import process_frames
+    from video.ocr_processor import score_frames, ocr_selected_slides
     from video.smart_slide import select_slides
     from models.summary_model import generate_summary
 
@@ -166,18 +166,23 @@ def run_video_pipeline(input_file: str, meeting_id: str, output_dir: Path) -> di
         json.dump(cleaned, f, indent=2, ensure_ascii=False)
     print(f"[✓] Cleaned transcript saved: {cleaned_path}")
 
-    # Stage 4: OCR extracted frames
+    # Stage 4: Fast-score all frames (sharpness + visual dedup, no OCR)
     print(f"\n{'='*60}")
-    print(f"[STAGE 4/6] OCR Processor — Extracting slide text from frames")
+    print(f"[STAGE 4/6] Frame Scorer — Visual dedup & quality scoring")
     print(f"{'='*60}")
-    ocr_frames = process_frames(frames) if frames else []
-    print(f"[✓] OCR complete: {len(ocr_frames)} frames processed")
+    scored_frames = score_frames(frames) if frames else []
+    print(f"[✓] Scored {len(scored_frames)} frames")
 
-    # Stage 5: Smart slide selection
+    # Stage 5: Smart slide selection (picks best frame per context)
     print(f"\n{'='*60}")
     print(f"[STAGE 5/6] Smart Slide Selector — Best frame per context")
     print(f"{'='*60}")
-    slides = select_slides(cleaned, ocr_frames, str(slides_dir), meeting_id)
+    slides = select_slides(cleaned, scored_frames, str(slides_dir), meeting_id)
+
+    # Stage 5b: Run OCR on selected slides only (much faster than all frames)
+    if slides:
+        print(f"[STAGE 5b] OCR — Running on {len(slides)} selected slides...")
+        slides = ocr_selected_slides(slides)
     print(f"[✓] {len(slides)} slides selected")
 
     # Stage 6: Summarize (with slides)
