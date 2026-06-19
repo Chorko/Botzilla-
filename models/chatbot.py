@@ -93,9 +93,11 @@ class BotzillaChatbot:
             for p in self.participants
         }
 
-        # Pre-build TF-IDF corpus
+        # Pre-build TF-IDF corpus and matrix
         self._corpus = []
         self._corpus_meta = []  # (type, id, raw_obj)
+        self._vectorizer = None
+        self._tfidf_matrix = None
         self._build_corpus()
 
         # Lazy Gemini client
@@ -107,38 +109,48 @@ class BotzillaChatbot:
 
     def _build_corpus(self):
         """Build text corpus for TF-IDF from all meeting content."""
-        # Topic summaries
-        for t in self.topics:
-            text = f"{t['title']}. {t.get('summary', '')}"
+        # Topic summaries — safe .get() on all fields the LLM might omit
+        for i, t in enumerate(self.topics):
+            title = t.get('title', 'Untitled Topic')
+            text = f"{title}. {t.get('summary', '')}"
             self._corpus.append(text)
-            self._corpus_meta.append(("topic", t["topic_id"], t))
+            self._corpus_meta.append(("topic", t.get("topic_id", f"topic_{i}"), t))
 
         # Key points
-        for kp in self.key_points:
+        for i, kp in enumerate(self.key_points):
             speaker = kp.get("speaker_name") or self._dn(kp.get("speaker_id", ""))
-            text = f"{kp['text']} {speaker}"
+            text = f"{kp.get('text', '')} {speaker}"
             self._corpus.append(text)
-            self._corpus_meta.append(("key_point", kp["point_id"], kp))
+            self._corpus_meta.append(("key_point", kp.get("point_id", f"kp_{i}"), kp))
 
         # Decisions
-        for d in self.decisions:
+        for i, d in enumerate(self.decisions):
             by = d.get("decided_by_name") or self._dn(d.get("decided_by_id", ""))
-            text = f"Decision: {d['text']} decided by {by}"
+            text = f"Decision: {d.get('text', '')} decided by {by}"
             self._corpus.append(text)
-            self._corpus_meta.append(("decision", d["decision_id"], d))
+            self._corpus_meta.append(("decision", d.get("decision_id", f"d_{i}"), d))
 
         # Action items
-        for a in self.action_items:
+        for i, a in enumerate(self.action_items):
             assignee = a.get("assignee_name") or self._dn(a.get("assignee_id", ""))
             due = f"due {a['due_date']}" if a.get("due_date") else ""
-            text = f"Action item: {a['text']} assigned to {assignee} {due}"
+            text = f"Action item: {a.get('text', '')} assigned to {assignee} {due}"
             self._corpus.append(text)
-            self._corpus_meta.append(("action_item", a["action_id"], a))
+            self._corpus_meta.append(("action_item", a.get("action_id", f"a_{i}"), a))
 
         # Quick facts as additional context
         for fact in self.ctx.get("quick_facts", []):
             self._corpus.append(fact)
             self._corpus_meta.append(("quick_fact", "qf", fact))
+
+        # Pre-build TF-IDF matrix once — not on every query
+        if len(self._corpus) >= 2:
+            try:
+                self._vectorizer = TfidfVectorizer(ngram_range=(1, 2), stop_words="english")
+                self._tfidf_matrix = self._vectorizer.fit_transform(self._corpus)
+            except Exception:
+                self._vectorizer = None
+                self._tfidf_matrix = None
 
     # ── Tier 1: JSON Lookup ──────────────────
 
@@ -200,8 +212,8 @@ class BotzillaChatbot:
         if any(p in q for p in ["topic", "agenda", "what was discussed", "what was covered"]):
             lines = []
             for t in self.topics:
-                dur = int(t["duration_seconds"] // 60)
-                lines.append(f"• {t['title']} (~{dur}m)")
+                dur = int(t.get("duration_seconds", 0) // 60)
+                lines.append(f"• {t.get('title', 'Untitled Topic')} (~{dur}m)")
             return ChatbotAnswer("Topics discussed:\n" + "\n".join(lines), 1.0, 1, ["topics"])
 
         # Intent: specific speaker name mentioned in query
@@ -235,21 +247,16 @@ class BotzillaChatbot:
 
     def _tier2_tfidf(self, query: str) -> ChatbotAnswer:
         """
-        TF-IDF cosine similarity across the corpus.
-        Returns best matching content chunks with a confidence score.
+        TF-IDF cosine similarity across the pre-built corpus matrix.
+        The vectorizer and matrix are built once in _build_corpus().
         """
-        if not self._corpus:
+        if not self._corpus or self._vectorizer is None or self._tfidf_matrix is None:
             return ChatbotAnswer("I don't have enough context to answer that.", 0.0, 2)
 
         try:
-            vectorizer = TfidfVectorizer(ngram_range=(1, 2), stop_words="english")
-            corpus_plus_query = self._corpus + [query]
-            tfidf_matrix = vectorizer.fit_transform(corpus_plus_query)
-
-            # Query is the last row; corpus is all other rows
-            query_vec = tfidf_matrix[-1]
-            corpus_vecs = tfidf_matrix[:-1]
-            scores = cosine_similarity(query_vec, corpus_vecs).flatten()
+            # Transform query using the already-fitted vectorizer (fast)
+            query_vec = self._vectorizer.transform([query])
+            scores = cosine_similarity(query_vec, self._tfidf_matrix).flatten()
 
             # Get top-4 matches
             top_indices = scores.argsort()[-4:][::-1]

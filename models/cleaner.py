@@ -77,20 +77,27 @@ def _preprocess_for_cleaner(schema1: dict) -> dict:
     for seg in segments:
         if current is None:
             current = dict(seg)
+            current["_count"] = 1
         elif seg["speaker_id"] == current["speaker_id"]:
+            n = current["_count"] + 1
             current["end_time"] = seg["end_time"]
             current["duration"] = round(current["end_time"] - current["start_time"], 3)
             current["text"] = current["text"].rstrip() + " " + seg["text"].lstrip()
-            current["confidence"] = round((current["confidence"] + seg["confidence"]) / 2, 3)
+            # Proper running mean — not (avg + new) / 2 which drifts for 3+ segments
+            current["confidence"] = round(
+                (current["confidence"] * current["_count"] + seg["confidence"]) / n, 3
+            )
             current["is_low_confidence"] = current["confidence"] < 0.70
             current["low_confidence_flags"] = list(
                 set(current.get("low_confidence_flags", []) + seg.get("low_confidence_flags", []))
             )
+            current["_count"] = n
         else:
-            merged.append(current)
+            merged.append({k: v for k, v in current.items() if k != "_count"})
             current = dict(seg)
+            current["_count"] = 1
     if current:
-        merged.append(current)
+        merged.append({k: v for k, v in current.items() if k != "_count"})
 
     # Build lean input — only what cleaner LLM needs
     return {

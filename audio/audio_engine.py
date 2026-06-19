@@ -190,14 +190,19 @@ def merge_same_speaker_whisper_segments(raw_segments: list) -> list:
                 "text": seg["text"].strip(),
                 "avg_confidence": seg.get("avg_logprob", 0),
                 "no_speech_prob": seg.get("no_speech_prob", 0),
+                "_count": 1,
             }
         elif seg["speaker"] == current["speaker"]:
-            # Same speaker — extend
+            # Same speaker — extend using proper running mean
+            n = current["_count"] + 1
             current["end"] = seg["end"]
             current["text"] += " " + seg["text"].strip()
-            current["avg_confidence"] = (current["avg_confidence"] + seg.get("avg_logprob", 0)) / 2
+            current["avg_confidence"] = (
+                current["avg_confidence"] * current["_count"] + seg.get("avg_logprob", 0)
+            ) / n
+            current["_count"] = n
         else:
-            merged.append(current)
+            merged.append({k: v for k, v in current.items() if k != "_count"})
             current = {
                 "speaker": seg["speaker"],
                 "start": seg["start"],
@@ -205,10 +210,11 @@ def merge_same_speaker_whisper_segments(raw_segments: list) -> list:
                 "text": seg["text"].strip(),
                 "avg_confidence": seg.get("avg_logprob", 0),
                 "no_speech_prob": seg.get("no_speech_prob", 0),
+                "_count": 1,
             }
 
     if current:
-        merged.append(current)
+        merged.append({k: v for k, v in current.items() if k != "_count"})
 
     return merged
 
