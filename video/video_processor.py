@@ -145,15 +145,18 @@ def extract_frames(
         for chunk_start in range(0, int(total_duration), chunk_size):
             chunk_name = str(temp_dir / f"chunk_{chunk_start}.mp4")
 
-            # Slice chunk
-            _run([
+            # Slice chunk (check=False — short last-chunk is normal; log & skip bad chunks)
+            slice_result = _run([
                 FFMPEG_PATH, "-y",
                 "-ss", str(chunk_start),
                 "-i", video_path,
                 "-t", str(chunk_size),
                 "-c", "copy",
                 chunk_name,
-            ])
+            ], check=False)
+            if slice_result.returncode != 0 or not Path(chunk_name).exists():
+                print(f"[video_processor] Warning: chunk at {chunk_start}s failed, skipping.")
+                continue
 
             # Snapshot files already in temp_dir before extraction, so we only
             # pick up files created by THIS chunk (not leftover from previous chunks)

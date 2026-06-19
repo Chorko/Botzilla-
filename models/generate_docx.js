@@ -830,7 +830,7 @@ function buildSlidesAppendix(summary, L) {
 
   Object.entries(byTopic).forEach(([topicId, topicSlides]) => {
     const topic = topics.find(t => t.topic_id === topicId);
-    if (topic) elems.push(h2(topic.title, topic.start_time, topic.end_time));
+    if (topic) elems.push(h2(topic.title || 'Untitled', topic.start_time, topic.end_time));
     topicSlides.forEach(slide => elems.push(...slideBlock(slide, incTs)));
   });
 

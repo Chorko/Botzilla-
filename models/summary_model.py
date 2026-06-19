@@ -448,7 +448,7 @@ def generate_summary(
     schema3 = {
         "summary_id": summary_id,
         "schema_version": SCHEMA_VERSION,
-        "source_cleaned_id": schema2["cleaned_id"],
+        "source_cleaned_id": schema2.get("cleaned_id", ""),
         "source_type": source_type,
         "has_slides": has_slides,
         "llm_model": GEMINI_MODEL,
