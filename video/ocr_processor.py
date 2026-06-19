@@ -87,7 +87,7 @@ def _fuzzy_similar(text_a: str, text_b: str, threshold: float) -> bool:
 # Single frame processor
 # ──────────────────────────────────────────────
 
-def process_frame(frame_path: str, timestamp: float) -> dict:
+def process_frame(frame_path: str, timestamp: float, fast_mode: bool = False) -> dict:
     """
     Run OCR on a single frame image.
 
@@ -120,6 +120,10 @@ def process_frame(frame_path: str, timestamp: float) -> dict:
         # Score the frame
         result["sharpness_score"] = _laplacian_sharpness(gray)
         result["text_density"] = _text_density(gray)
+
+        if fast_mode:
+            result["_thumb"] = cv2.resize(gray, (16, 16), interpolation=cv2.INTER_AREA)
+            return result
 
         from config.settings import _HAS_GPU
 
