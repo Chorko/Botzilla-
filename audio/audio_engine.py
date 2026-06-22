@@ -394,7 +394,13 @@ def process_audio(
 
     # ── Step 3: Align (word timestamps, but we only use segment-level) ──
     print("[audio_engine] Step 3/4: Aligning transcription...")
-    align_model, align_metadata = _get_align_model(language, device)
+    try:
+        align_model, align_metadata = _get_align_model(language, device)
+    except (ValueError, KeyError) as e:
+        print(f"[audio_engine] Warning: {e}. Falling back to English align model.")
+        language = "en"
+        align_model, align_metadata = _get_align_model("en", device)
+
     result = whisperx.align(
         result["segments"],
         align_model,

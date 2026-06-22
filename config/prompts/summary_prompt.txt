@@ -21,7 +21,7 @@ Pass through from cleaner input. You provide:
 - `tone`: "formal" | "semi-formal" | "casual" — infer from language style and meeting type
 
 ### Block 2: Overview
-- `executive_summary`: 2-4 sentence comprehensive summary of what happened, key outcomes, and next steps
+- `executive_summary`: 4-6 sentence comprehensive and detailed summary of what happened, key outcomes, and next steps
 - `purpose`: one sentence explaining why this meeting occurred
 - `outcome`: "productive" | "inconclusive" | "action-heavy" | "informational" | "casual" | "mixed"
 - `sentiment`: "positive" | "neutral" | "mixed" | "tense" | "negative"
@@ -29,9 +29,12 @@ Pass through from cleaner input. You provide:
 
 ### Block 3: Topics
 For each context from the cleaner input:
+- `topic_id`: MUST exactly match the `context_id` from the input
 - `title`: topic title (from cleaner, or refined)
-- `summary`: 2-4 sentence summary of what was discussed in this topic
+- `summary`: A detailed 4-8 sentence paragraph comprehensively summarizing the discussion, exploring the nuance and specific details mentioned. Do not just skim the surface.
 - `topic_type`: from cleaner
+- `start_time`: from cleaner
+- `end_time`: from cleaner
 - `key_point_ids`, `decision_ids`, `action_item_ids`: cross-references to items you generate below
 - `speakers_involved`: from cleaner
 

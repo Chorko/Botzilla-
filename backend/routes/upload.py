@@ -38,7 +38,7 @@ def _emit(meeting_id: str, msg: str):
     _progress.setdefault(meeting_id, []).append(msg)
 
 
-async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
+async def _run_pipeline(meeting_id: str, local_path: str, source_type: str, original_filename: str = "upload"):
     """Background task — runs the full pipeline and updates DB."""
     import json
 
@@ -48,6 +48,19 @@ async def _run_pipeline(meeting_id: str, local_path: str, source_type: str):
 
     try:
         out_dir = get_output_dir(meeting_id, OUTPUT_DIR)
+
+        # ── Stage 0: Upload to storage and record in DB ──
+        emit("Uploading file to storage...")
+        try:
+            import os
+            from storage.file_manager import detect_mime_type
+            file_size = os.path.getsize(local_path)
+            mime_type = detect_mime_type(original_filename)
+            storage_url = upload_meeting_file(local_path, meeting_id, original_filename)
+            if storage_url:
+                db.save_upload_record(meeting_id, original_filename, storage_url, file_size, mime_type)
+        except Exception as e:
+            emit(f"Storage upload warning: {e}")
 
         # ── Stage 1: Audio Engine ──
         emit("stage:audio_engine")
@@ -184,7 +197,7 @@ async def upload_file(
         pass  # Supabase optional — continue without it
 
     # Kick off pipeline in background
-    background_tasks.add_task(_run_pipeline, meeting_id, local_path, source_type)
+    background_tasks.add_task(_run_pipeline, meeting_id, local_path, source_type, filename)
 
     return {
         "meeting_id": meeting_id,
@@ -210,8 +223,8 @@ async def stream_progress(meeting_id: str):
                         return
                 await asyncio.sleep(0.5)
         finally:
-            # Clean up progress store when client disconnects or stream ends
-            _cleanup_progress(meeting_id)
+            # Delay cleanup to survive page refreshes during processing
+            asyncio.get_event_loop().call_later(60, _cleanup_progress, meeting_id)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

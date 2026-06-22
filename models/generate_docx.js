@@ -838,6 +838,290 @@ function buildSlidesAppendix(summary, L) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// NEW: MEETING INTELLIGENCE SECTION
+// Surfaces analytics derived from the full Schema 3 payload
+// ─────────────────────────────────────────────────────────────
+
+function buildMeetingIntelligence(summary) {
+  const m = summary.metadata || {};
+  const o = summary.overview || {};
+  const topics = summary.topics || [];
+  const action_items = summary.action_items || [];
+  const decisions = summary.decisions || [];
+  const key_points = summary.key_points || [];
+  const speakers = summary.speaker_contributions || [];
+
+  const elems = [sectionBanner('Meeting Intelligence'), spacer(1)];
+
+  // ── Row 1: Meeting Profile ──
+  elems.push(h3('Meeting Profile'));
+  const profileRows = [
+    ['Meeting Type',   cap(m.meeting_type || '—')],
+    ['Tone',           cap(m.tone || '—')],
+    ['Language',       (m.language_primary || '—').toUpperCase() + (m.is_multilingual ? ' (Multilingual)' : '')],
+    ['Outcome',        cap(o.outcome || '—')],
+    ['Sentiment',      cap(o.sentiment || '—')],
+    ['Duration',       m.duration_formatted || '—'],
+    ['Participants',   String(m.participant_count || 0)],
+  ];
+  const profileColW = [2800, PAGE.content - 2800];
+  elems.push(new Table({
+    width: { size: PAGE.content, type: WidthType.DXA },
+    columnWidths: profileColW,
+    rows: profileRows.map(([label, val], i) => {
+      const bg = i % 2 === 0 ? C.rowWhite : C.rowAlt;
+      return new TableRow({ children: [
+        dCell(label, profileColW[0], { bg, bold: true, color: C.navy }),
+        dCell(val,   profileColW[1], { bg, color: C.darkText }),
+      ]});
+    }),
+  }), spacer(1));
+
+  // ── Row 2: Content Analytics ──
+  elems.push(h3('Content Analytics'));
+  const highPri = action_items.filter(a => a.priority === 'high').length;
+  const avgTopicDur = topics.length > 0
+    ? Math.round(topics.reduce((s, t) => s + (t.duration_seconds || 0), 0) / topics.length / 60)
+    : 0;
+  const topSpeaker = speakers.reduce((best, s) =>
+    (s.speaking_percentage || 0) > (best.speaking_percentage || 0) ? s : best
+  , speakers[0] || {});
+  // Topic with most action items
+  const actByTopic = {};
+  action_items.forEach(a => { if (a.topic_id) actByTopic[a.topic_id] = (actByTopic[a.topic_id] || 0) + 1; });
+  const busyTopicId = Object.entries(actByTopic).sort((a, b) => b[1] - a[1])[0];
+  const busyTopic = busyTopicId ? topics.find(t => t.topic_id === busyTopicId[0]) : null;
+
+  const analyticsRows = [
+    ['Total Topics',             String(topics.length)],
+    ['Total Key Points',         String(key_points.length)],
+    ['High-Priority Actions',    String(highPri) + (highPri > 0 ? ' ⚠' : '')],
+    ['Avg. Topic Duration',      avgTopicDur + ' min'],
+    ['Most Active Speaker',      (topSpeaker.display_name || topSpeaker.name || '—') + (topSpeaker.speaking_percentage ? ` (${topSpeaker.speaking_percentage.toFixed(0)}%)` : '')],
+    ['Most Action-Dense Topic',  busyTopic ? `${busyTopic.title} (${busyTopicId[1]} items)` : '—'],
+    ['Decisions Made',           String(decisions.length)],
+  ];
+  elems.push(new Table({
+    width: { size: PAGE.content, type: WidthType.DXA },
+    columnWidths: profileColW,
+    rows: analyticsRows.map(([label, val], i) => {
+      const bg = i % 2 === 0 ? C.rowWhite : C.rowAlt;
+      return new TableRow({ children: [
+        dCell(label, profileColW[0], { bg, bold: true, color: C.navy }),
+        dCell(val,   profileColW[1], { bg, color: C.darkText }),
+      ]});
+    }),
+  }), spacer(1));
+
+  // ── Purpose block ──
+  if (o.purpose) {
+    elems.push(callout([
+      p('Meeting Purpose', { bold: true, size: 20, color: C.navy, after: 60 }),
+      p(o.purpose, { size: 21, color: C.darkText }),
+    ], { bg: C.tealBg, accent: C.teal }), spacer(1));
+  }
+
+  return elems;
+}
+
+// ─────────────────────────────────────────────────────────────
+// NEW: STANDALONE KEY POINTS SECTION
+// All key points consolidated and sorted by importance
+// ─────────────────────────────────────────────────────────────
+
+function buildKeyPointsSection(summary, L) {
+  const { key_points = [], topics = [], metadata = {} } = summary;
+  if (!key_points.length) return [];
+
+  const parts = metadata.participants || [];
+  const topicMap = {};
+  topics.forEach(t => (topicMap[t.topic_id] = t.title || 'General'));
+
+  // Sort: high → medium → low
+  const order = { high: 0, medium: 1, low: 2 };
+  const sorted = [...key_points].sort((a, b) =>
+    (order[a.importance] ?? 2) - (order[b.importance] ?? 2)
+  );
+
+  const elems = [sectionBanner(L.keyPoints), spacer(1)];
+
+  const cw = [340, 4400, 1700, 1320, 1600];
+  elems.push(new Table({
+    width: { size: PAGE.content, type: WidthType.DXA },
+    columnWidths: cw,
+    rows: [
+      new TableRow({ tableHeader: true, children: [
+        hCell('#', cw[0]), hCell('Key Point', cw[1]),
+        hCell('Speaker', cw[2]), hCell('Importance', cw[3]), hCell('Topic / Time', cw[4]),
+      ]}),
+      ...sorted.map((kp, i) => {
+        const speaker = kp.speaker_name || dn(kp.speaker_id, parts) || '—';
+        const topicTitle = topicMap[kp.topic_id] || '—';
+        const ts = kp.timestamp != null ? fmt(kp.timestamp) : '—';
+        const bg = i % 2 === 0 ? C.rowWhite : C.rowAlt;
+        const impColor = kp.importance === 'high' ? C.red : kp.importance === 'medium' ? C.amber : C.green;
+        const impLabel = kp.importance === 'high' ? '● High' : kp.importance === 'medium' ? '● Medium' : '● Low';
+        return new TableRow({ children: [
+          dCell(i + 1, cw[0], { bg, bold: true, color: C.indigo }),
+          dCell(kp.text, cw[1], { bg, bold: kp.importance === 'high' }),
+          dCell(speaker, cw[2], { bg, italic: true, color: C.midText }),
+          new TableCell({
+            borders: ALL_BORDERS(C.border),
+            width: { size: cw[3], type: WidthType.DXA },
+            shading: { fill: bg, type: ShadingType.CLEAR },
+            margins: CELL_MARGINS,
+            children: [new Paragraph({
+              children: [new TextRun({ text: impLabel, font: 'Calibri', size: 19, bold: true, color: impColor })],
+            })],
+          }),
+          new TableCell({
+            borders: ALL_BORDERS(C.border),
+            width: { size: cw[4], type: WidthType.DXA },
+            shading: { fill: bg, type: ShadingType.CLEAR },
+            margins: CELL_MARGINS,
+            children: [
+              new Paragraph({ children: [new TextRun({ text: topicTitle, font: 'Calibri', size: 18, color: C.indigo })], spacing: { after: 30 } }),
+              new Paragraph({ children: [new TextRun({ text: ts, font: 'Calibri', size: 17, italic: true, color: C.grey })] }),
+            ],
+          }),
+        ]});
+      }),
+    ],
+  }), spacer(1));
+
+  return elems;
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENHANCED SPEAKER SECTION — deep per-speaker detail
+// ─────────────────────────────────────────────────────────────
+
+function buildSpeakerSectionDetailed(summary, L) {
+  const { speaker_contributions = [], metadata = {}, action_items = [], decisions = [], topics = [] } = summary;
+  if (!speaker_contributions.length) return [];
+
+  const parts = metadata.participants || [];
+  const topicMap = {};
+  topics.forEach(t => (topicMap[t.topic_id] = t.title));
+  const elems = [sectionBanner(L.speakers), spacer(1)];
+
+  // ── Summary table (speaking time overview) ──
+  const cw = [2000, 900, 700, 5760];
+  elems.push(new Table({
+    width: { size: PAGE.content, type: WidthType.DXA },
+    columnWidths: cw,
+    rows: [
+      new TableRow({ tableHeader: true, children: [
+        hCell('Participant', cw[0]), hCell('Time', cw[1]), hCell('%', cw[2]), hCell('Key Contributions', cw[3]),
+      ]}),
+      ...speaker_contributions.map((sc, idx) => {
+        const name    = sc.display_name || sc.name || dn(sc.speaker_id, parts);
+        const role    = cap(sc.role || '');
+        const timeFmt = sc.speaking_time_seconds != null ? fmt(sc.speaking_time_seconds) : '—';
+        const pctStr  = sc.speaking_percentage != null ? `${sc.speaking_percentage.toFixed(0)}%` : '—';
+        const bg      = idx % 2 === 0 ? C.rowWhite : C.rowAlt;
+        return new TableRow({
+          children: [
+            new TableCell({
+              borders: ALL_BORDERS(C.border), width: { size: cw[0], type: WidthType.DXA },
+              shading: { fill: bg, type: ShadingType.CLEAR }, margins: CELL_MARGINS,
+              children: [
+                new Paragraph({ children: [new TextRun({ text: name, font: 'Calibri', size: 21, bold: true, color: C.navy })], spacing: { after: 30 } }),
+                ...(role ? [new Paragraph({ children: [new TextRun({ text: role, font: 'Calibri', size: 17, italic: true, color: C.teal })] })] : []),
+              ],
+            }),
+            dCell(timeFmt, cw[1], { bg, bold: true, color: C.indigo }),
+            dCell(pctStr,  cw[2], { bg, color: C.grey }),
+            new TableCell({
+              borders: ALL_BORDERS(C.border), width: { size: cw[3], type: WidthType.DXA },
+              shading: { fill: bg, type: ShadingType.CLEAR }, margins: CELL_MARGINS,
+              children: (sc.key_contributions || []).length > 0
+                ? (sc.key_contributions || []).map(kc => new Paragraph({
+                    children: [
+                      new TextRun({ text: '▸  ', font: 'Calibri', size: 19, bold: true, color: C.teal }),
+                      new TextRun({ text: kc, font: 'Calibri', size: 20, color: C.darkText }),
+                    ],
+                    spacing: { before: 40, after: 40 },
+                  }))
+                : [new Paragraph({ children: [new TextRun({ text: '—', font: 'Calibri', size: 20, color: C.grey })] })],
+            }),
+          ],
+        });
+      }),
+    ],
+  }), spacer(2));
+
+  // ── Per-speaker deep dive ──
+  speaker_contributions.forEach((sc, idx) => {
+    const name = sc.display_name || sc.name || dn(sc.speaker_id, parts);
+    const speakerActions  = action_items.filter(a => a.assignee_id === sc.speaker_id || a.assignee_name === sc.name);
+    const speakerDecisions = decisions.filter(d => d.decided_by_id === sc.speaker_id || d.decided_by_name === sc.name);
+    const topicsLed = (sc.topics_led || []).map(tid => topicMap[tid] || tid).filter(Boolean);
+    const decisionsMade = (sc.decisions_made || []);
+    const actionItemsAssigned = (sc.action_items_assigned || []);
+
+    // Only render detail block if there's meaningful content
+    const hasDetail = speakerActions.length || speakerDecisions.length || topicsLed.length ||
+                      decisionsMade.length || actionItemsAssigned.length || (sc.key_contributions || []).length;
+    if (!hasDetail) return;
+
+    elems.push(new Paragraph({
+      children: [
+        new TextRun({ text: `${name}`, font: 'Calibri', size: 28, bold: true, color: C.navy }),
+        ...(sc.role ? [new TextRun({ text: `   ${cap(sc.role)}`, font: 'Calibri', size: 20, italic: true, color: C.teal })] : []),
+        ...(sc.speaking_percentage != null ? [new TextRun({ text: `   ${sc.speaking_percentage.toFixed(1)}% speaking time`, font: 'Calibri', size: 19, color: C.grey })] : []),
+      ],
+      spacing: { before: 240, after: 80 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 3, color: C.divider, space: 1 } },
+    }));
+
+    // Topics led
+    if (topicsLed.length > 0) {
+      elems.push(h3('Topics Led'));
+      topicsLed.forEach(t => elems.push(new Paragraph({
+        numbering: { reference: 'bullets', level: 0 },
+        children: [new TextRun({ text: t, font: 'Calibri', size: 21, color: C.darkText })],
+        spacing: { before: 40, after: 40 },
+      })));
+    }
+
+    // Decisions made
+    if (speakerDecisions.length > 0) {
+      elems.push(h3('Decisions Made'));
+      speakerDecisions.forEach(d => elems.push(new Paragraph({
+        numbering: { reference: 'bullets', level: 0 },
+        children: [
+          new TextRun({ text: d.text, font: 'Calibri', size: 21, bold: true, color: C.navy }),
+          ...(d.timestamp != null ? [new TextRun({ text: `  (${fmt(d.timestamp)})`, font: 'Calibri', size: 18, italic: true, color: C.grey })] : []),
+        ],
+        spacing: { before: 40, after: 40 },
+      })));
+    }
+
+    // Action items assigned to this speaker
+    if (speakerActions.length > 0) {
+      elems.push(h3('Action Items Assigned'));
+      speakerActions.forEach(a => {
+        const priLabel = a.priority ? `[${cap(a.priority)}]` : '';
+        const dueLabel = a.due_date ? `  Due: ${a.due_date}` : '';
+        elems.push(new Paragraph({
+          numbering: { reference: 'bullets', level: 0 },
+          children: [
+            new TextRun({ text: a.text, font: 'Calibri', size: 21, color: C.darkText }),
+            new TextRun({ text: `  ${priLabel}${dueLabel}`, font: 'Calibri', size: 18, italic: true, color: priColor(a.priority) }),
+          ],
+          spacing: { before: 40, after: 40 },
+        }));
+      });
+    }
+
+    elems.push(spacer(1));
+  });
+
+  return elems;
+}
+
+// ─────────────────────────────────────────────────────────────
 // MAIN
 // ─────────────────────────────────────────────────────────────
 
@@ -855,13 +1139,15 @@ async function generateDocx(summary) {
     : '';
 
   const children = [
-    ...(inc.cover_page            !== false ? buildCoverPage(summary, L)          : []),
-    ...(inc.executive_summary     !== false ? buildOverview(summary, L)           : []),
-    ...(inc.topics_breakdown      !== false ? buildTopics(summary, L)             : []),
-    ...(inc.decisions             !== false ? buildDecisionsSection(summary, L)   : []),
-    ...(inc.action_items          !== false ? buildActionItemsSection(summary, L) : []),
-    ...(inc.speaker_contributions !== false ? buildSpeakerSection(summary, L)     : []),
-    ...(inc.slides                !== false ? buildSlidesAppendix(summary, L)     : []),
+    ...(inc.cover_page            !== false ? buildCoverPage(summary, L)           : []),
+    ...(inc.executive_summary     !== false ? buildOverview(summary, L)            : []),
+    ...(                                      buildMeetingIntelligence(summary)    ),
+    ...(inc.topics_breakdown      !== false ? buildTopics(summary, L)              : []),
+    ...(                                      buildKeyPointsSection(summary, L)    ),
+    ...(inc.decisions             !== false ? buildDecisionsSection(summary, L)    : []),
+    ...(inc.action_items          !== false ? buildActionItemsSection(summary, L)  : []),
+    ...(inc.speaker_contributions !== false ? buildSpeakerSectionDetailed(summary, L) : []),
+    ...(inc.slides                !== false ? buildSlidesAppendix(summary, L)      : []),
   ];
 
   const doc = new Document({
