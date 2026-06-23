@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import TopicAccordion from '../components/TopicAccordion'
 import ActionItemsTable from '../components/ActionItemsTable'
 import SpeakerCards from '../components/SpeakerCards'
@@ -13,19 +14,21 @@ function fmtTs(sec: number): string {
   return `${m}:${s.toString().padStart(2,'0')}`
 }
 
-/** Floating stat card with 3D depth */
-function StatCard({ value, label, icon, color = 'var(--p)' }: {
-  value: string | number
-  label: string
-  icon: string
-  color?: string
+function StatCard({ value, label, icon, delay = 0 }: {
+  value: string | number; label: string; icon: string; delay?: number
 }) {
   return (
-    <div className="stat-card">
-      <div className="stat-card-icon" style={{ color }}>{icon}</div>
+    <motion.div
+      className="stat-card"
+      initial={{ opacity: 0, y: 16, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+      whileHover={{ y: -5, scale: 1.03 }}
+    >
+      <div className="stat-card-icon">{icon}</div>
       <div className="stat-card-value">{value}</div>
       <div className="stat-card-label">{label}</div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -35,29 +38,24 @@ export default function Overview() {
   const [summary,   setSummary]   = useState<any>(null)
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview'|'topics'|'speakers'|'slides'>('overview')
+  const [activeTab, setActiveTab] = useState<string>('overview')
 
   useEffect(() => {
     if (!meetingId) return
     fetch(`/api/summary/${meetingId}`)
-      .then(r => { if (!r.ok) throw new Error(`${r.status} – ${r.statusText}`); return r.json() })
+      .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json() })
       .then(d => { setSummary(d); setLoading(false) })
       .catch(e => { setError(e.message); setLoading(false) })
   }, [meetingId])
 
   if (loading) return (
     <div className="page" style={{ alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-      <div style={{ position: 'relative', width: 56, height: 56 }}>
-        <div style={{
-          width: 56, height: 56,
-          border: '3px solid rgba(99,102,241,0.1)',
-          borderTop: '3px solid var(--p)',
-          borderRight: '3px solid var(--a)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-      </div>
-      <p style={{ color: 'var(--t-3)', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+        style={{ width: 48, height: 48, border: '3px solid var(--indigo-4)', borderTopColor: 'var(--indigo)', borderRadius: '50%' }}
+      />
+      <p style={{ color: 'var(--text-4)', fontFamily: 'var(--font-mono)', fontSize: '0.875rem' }}>
         Loading summary…
       </p>
     </div>
@@ -66,7 +64,7 @@ export default function Overview() {
   if (error || !summary) return (
     <div className="page" style={{ alignItems: 'center', justifyContent: 'center', gap: 16 }}>
       <div style={{ fontSize: '2.5rem' }}>⚠</div>
-      <p style={{ color: 'var(--danger)' }}>Failed to load: {error}</p>
+      <p style={{ color: 'var(--red)' }}>Failed to load: {error}</p>
       <button className="btn btn-ghost" onClick={() => navigate('/')}>← Back to Upload</button>
     </div>
   )
@@ -81,17 +79,14 @@ export default function Overview() {
   const slides      = summary.slides                || []
 
   const tabs = [
-    { id: 'overview',  label: 'Overview',                  icon: '◈' },
-    { id: 'topics',    label: `Topics · ${topics.length}`, icon: '◉' },
-    { id: 'speakers',  label: `Speakers · ${speakers.length}`, icon: '◎' },
-    ...(slides.length ? [{ id: 'slides', label: `Slides · ${slides.length}`, icon: '▣' }] : []),
-  ] as { id: string; label: string; icon: string }[]
+    { id: 'overview',  label: 'Overview',                       icon: '◈' },
+    { id: 'topics',    label: `Topics (${topics.length})`,       icon: '◉' },
+    { id: 'speakers',  label: `Speakers (${speakers.length})`,   icon: '◎' },
+    ...(slides.length ? [{ id: 'slides', label: `Slides (${slides.length})`, icon: '▣' }] : []),
+  ]
 
   return (
     <div className="page">
-      {/* Grid background */}
-      <div className="grid-bg" />
-
       {/* Navbar */}
       <nav className="navbar">
         <Link to="/" className="navbar-logo">
@@ -103,7 +98,7 @@ export default function Overview() {
             💬 Ask AI
           </Link>
           <a href={`/api/docx/${meetingId}`} download className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.82rem' }}>
-            ↓ Download Report
+            ↓ Report
           </a>
         </div>
       </nav>
@@ -111,43 +106,51 @@ export default function Overview() {
       {/* Header */}
       <div className="overview-header">
         <div className="container">
-          <div className="overview-meta-row fade-in">
+          <motion.div
+            className="overview-meta-row"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
             <span className="badge badge-primary">{meta.meeting_type?.replace(/_/g,' ') || 'Meeting'}</span>
             <span className="badge badge-muted">{meta.tone || 'semi-formal'}</span>
             {meta.is_multilingual && <span className="badge badge-accent">Multilingual</span>}
-            {summary.has_slides   && <span className="badge badge-accent">📊 Slides</span>}
             {overview.outcome && (
               <span className={`badge outcome-${overview.outcome}`}>
-                {overview.outcome === 'productive' ? '✅' :
-                 overview.outcome === 'action-heavy' ? '🎯' : 'ℹ️'} {overview.outcome}
+                {overview.outcome === 'productive' ? '✅' : overview.outcome === 'action-heavy' ? '🎯' : 'ℹ️'} {overview.outcome}
               </span>
             )}
-          </div>
+            {overview.sentiment && <span className="badge badge-muted">{overview.sentiment}</span>}
+          </motion.div>
 
-          <h1 className="overview-title fade-in fade-in-1">
+          <motion.h1
+            className="overview-title"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08, duration: 0.5, ease: [0.16,1,0.3,1] }}
+          >
             {meta.title || 'Meeting Summary'}
-          </h1>
+          </motion.h1>
 
-          <div className="overview-stats fade-in fade-in-2">
-            {meta.duration_formatted && (
-              <div className="stat-chip">⏱ {meta.duration_formatted}</div>
-            )}
-            {meta.participant_count > 0 && (
-              <div className="stat-chip">👥 {meta.participant_count} Participants</div>
-            )}
+          <motion.div
+            className="overview-stats"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.14, duration: 0.4 }}
+          >
+            {meta.duration_formatted && <div className="stat-chip">⏱ {meta.duration_formatted}</div>}
+            {meta.participant_count > 0 && <div className="stat-chip">👥 {meta.participant_count} participants</div>}
             {meta.date && <div className="stat-chip">📅 {meta.date}</div>}
-            {meta.language_primary && (
-              <div className="stat-chip">🌐 {meta.language_primary.toUpperCase()}</div>
-            )}
-          </div>
+            {meta.language_primary && <div className="stat-chip">🌐 {meta.language_primary.toUpperCase()}</div>}
+          </motion.div>
 
-          {/* Bento stat row */}
-          <div className="bento-stats fade-in fade-in-3">
-            <StatCard value={topics.length}      label="Topics"       icon="◉" color="var(--p-2)" />
-            <StatCard value={actionItems.length}  label="Actions"      icon="▶" color="var(--a)" />
-            <StatCard value={decisions.length}    label="Decisions"    icon="◈" color="var(--g)" />
-            <StatCard value={keyPoints.length}    label="Key Points"   icon="✦" color="var(--success)" />
-            <StatCard value={speakers.length}     label="Speakers"     icon="◎" color="var(--p-3)" />
+          {/* Bento stats */}
+          <div className="bento-stats">
+            <StatCard value={topics.length}      label="Topics"     icon="◉" delay={0.18} />
+            <StatCard value={actionItems.length}  label="Actions"    icon="▶" delay={0.22} />
+            <StatCard value={decisions.length}    label="Decisions"  icon="◈" delay={0.26} />
+            <StatCard value={keyPoints.length}    label="Key Points" icon="✦" delay={0.30} />
+            <StatCard value={speakers.length}     label="Speakers"   icon="◎" delay={0.34} />
           </div>
         </div>
       </div>
@@ -160,9 +163,9 @@ export default function Overview() {
               <button
                 key={id}
                 className={`tab-btn ${activeTab === id ? 'active' : ''}`}
-                onClick={() => setActiveTab(id as any)}
+                onClick={() => setActiveTab(id)}
               >
-                <span style={{ opacity: 0.7 }}>{icon}</span> {label}
+                <span style={{ opacity: 0.6 }}>{icon}</span> {label}
               </button>
             ))}
           </div>
@@ -170,110 +173,124 @@ export default function Overview() {
       </div>
 
       {/* Content */}
-      <main className="container overview-content" style={{ position: 'relative', zIndex: 1 }}>
+      <main className="container overview-content">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            className="tab-panel"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.28, ease: [0.16,1,0.3,1] }}
+          >
+            {activeTab === 'overview' && (
+              <>
+                {overview.executive_summary && (
+                  <section className="content-section">
+                    <div className="section-label">Executive Summary</div>
+                    <div className="exec-summary card">
+                      <p>{overview.executive_summary}</p>
+                    </div>
+                  </section>
+                )}
 
-        {activeTab === 'overview' && (
-          <div className="tab-panel">
-            {/* Executive Summary */}
-            {overview.executive_summary && (
-              <section className="content-section">
-                <div className="section-label">Executive Summary</div>
-                <div className="exec-summary card">
-                  <p style={{ color: 'var(--t-1)', lineHeight: 1.85, fontSize: '0.96rem' }}>
-                    {overview.executive_summary}
-                  </p>
-                </div>
-              </section>
-            )}
-
-            {/* Two-column grid: Highlights + Decisions */}
-            <div className="overview-grid-2">
-              {overview.highlights?.length > 0 && (
-                <section>
-                  <div className="section-label">Highlights</div>
-                  <div className="highlight-box card">
-                    <ul className="highlights-list">
-                      {overview.highlights.map((h: string, i: number) => (
-                        <li key={i}>{h}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </section>
-              )}
-
-              {decisions.length > 0 && (
-                <section>
-                  <div className="section-label">Decisions Made ({decisions.length})</div>
-                  <div className="decisions-list">
-                    {decisions.map((d: any) => (
-                      <div key={d.decision_id} className="decision-item">
-                        <div className="decision-text">{d.text}</div>
-                        {(d.decided_by_name || d.decided_by_id) && (
-                          <div className="decision-by">
-                            <span className="ts-chip">{fmtTs(d.timestamp)}</span>
-                            <span>by <strong style={{ color: 'var(--t-1)' }}>{d.decided_by_name || d.decided_by_id}</strong></span>
-                          </div>
-                        )}
+                <div className="overview-grid-2">
+                  {overview.highlights?.length > 0 && (
+                    <section>
+                      <div className="section-label">Highlights</div>
+                      <div className="highlight-box card">
+                        <ul className="highlights-list">
+                          {overview.highlights.map((h: string, i: number) => (
+                            <motion.li
+                              key={i}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: i * 0.05 }}
+                            >
+                              {h}
+                            </motion.li>
+                          ))}
+                        </ul>
                       </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </div>
+                    </section>
+                  )}
 
-            {/* Action Items */}
-            {actionItems.length > 0 && (
-              <section className="content-section">
-                <div className="section-label">Action Items ({actionItems.length})</div>
-                <ActionItemsTable items={actionItems} />
-              </section>
+                  {decisions.length > 0 && (
+                    <section>
+                      <div className="section-label">Decisions Made ({decisions.length})</div>
+                      <div className="decisions-list">
+                        {decisions.map((d: any, i: number) => (
+                          <motion.div
+                            key={d.decision_id}
+                            className="decision-item"
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.06 }}
+                          >
+                            <div className="decision-text">{d.text}</div>
+                            {(d.decided_by_name || d.decided_by_id) && (
+                              <div className="decision-by">
+                                <span className="ts-chip">{fmtTs(d.timestamp)}</span>
+                                <span>by <strong style={{ color: 'var(--text-2)' }}>{d.decided_by_name || d.decided_by_id}</strong></span>
+                              </div>
+                            )}
+                          </motion.div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </div>
+
+                {actionItems.length > 0 && (
+                  <section className="content-section">
+                    <div className="section-label">Action Items ({actionItems.length})</div>
+                    <ActionItemsTable items={actionItems} />
+                  </section>
+                )}
+              </>
             )}
-          </div>
-        )}
 
-        {activeTab === 'topics' && (
-          <div className="tab-panel">
-            <TopicAccordion topics={topics} keyPoints={keyPoints} />
-          </div>
-        )}
+            {activeTab === 'topics' && (
+              <TopicAccordion topics={topics} keyPoints={keyPoints} />
+            )}
 
-        {activeTab === 'speakers' && (
-          <div className="tab-panel">
-            <SpeakerCards speakers={speakers} actionItems={actionItems} />
-          </div>
-        )}
+            {activeTab === 'speakers' && (
+              <SpeakerCards speakers={speakers} actionItems={actionItems} />
+            )}
 
-        {activeTab === 'slides' && (
-          <div className="tab-panel">
-            <SlideViewer slides={slides} topics={topics} />
-          </div>
-        )}
+            {activeTab === 'slides' && (
+              <SlideViewer slides={slides} topics={topics} />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       <style>{`
         .bento-stats {
-          display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px;
+          display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px;
         }
         .stat-card {
-          display: flex; flex-direction: column; align-items: center;
-          gap: 4px; padding: 14px 22px;
-          background: var(--glass-dark);
-          backdrop-filter: blur(20px);
-          border: 1px solid var(--border-subtle);
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          padding: 14px 20px;
+          background: var(--surface);
+          border: 1px solid var(--border);
           border-radius: var(--r-lg);
-          box-shadow: var(--s-sm), var(--rim);
-          min-width: 90px;
-          transition: all 0.2s var(--ease-expo);
+          box-shadow: var(--shadow-sm), var(--rim-light);
+          min-width: 90px; cursor: default;
+          transition: box-shadow 0.2s;
         }
-        .stat-card:hover {
-          transform: translateY(-3px);
-          border-color: var(--border-strong);
-          box-shadow: var(--s-md), var(--s-p);
+        .stat-card-icon  { font-size: 1rem; color: var(--indigo); }
+        .stat-card-value {
+          font-family: var(--font-display);
+          font-size: 1.7rem; font-weight: 700; color: var(--text); line-height: 1;
         }
-        .stat-card-icon  { font-size: 1rem; }
-        .stat-card-value { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--t-0); line-height: 1; }
-        .stat-card-label { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--t-3); }
-        .overview-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+        .stat-card-label {
+          font-size: 0.64rem; font-weight: 700; letter-spacing: 0.08em;
+          text-transform: uppercase; color: var(--text-4);
+        }
+        .overview-grid-2 {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px;
+        }
         @media (max-width: 768px) { .overview-grid-2 { grid-template-columns: 1fr; } }
       `}</style>
     </div>
