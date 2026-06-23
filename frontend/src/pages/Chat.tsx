@@ -12,14 +12,14 @@ interface Message {
 
 export default function Chat() {
   const { meetingId } = useParams<{ meetingId: string }>()
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput]       = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [messages,  setMessages]  = useState<Message[]>([])
+  const [input,     setInput]     = useState('')
+  const [loading,   setLoading]   = useState(false)
   const [questions, setQuestions] = useState<string[]>([])
-  const [title, setTitle]       = useState('')
+  const [title,     setTitle]     = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Load suggested questions + meeting title
   useEffect(() => {
     if (!meetingId) return
     fetch(`/api/chat/${meetingId}/questions`)
@@ -29,20 +29,26 @@ export default function Chat() {
 
     fetch(`/api/summary/${meetingId}`)
       .then(r => r.json())
-      .then(d => setTitle(d?.metadata?.title || ''))
+      .then(d => setTitle(d?.metadata?.title || 'this meeting'))
       .catch(() => {})
 
-    // Welcome message
     setMessages([{
       role: 'bot',
-      text: "👋 Hey! I've analysed this meeting. Ask me anything — action items, decisions, what someone said, or a topic summary.",
+      text: "Hey! I've analysed this meeting in full. Ask me anything — action items, who said what, decisions made, or a summary of any topic.",
     }])
   }, [meetingId])
 
-  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
+  }, [input])
 
   const send = async (query: string) => {
     if (!query.trim() || loading || !meetingId) return
@@ -59,13 +65,13 @@ export default function Chat() {
       const data = await res.json()
       setMessages(m => [...m, {
         role: 'bot',
-        text: data.answer,
+        text: data.answer || 'No answer returned.',
         tier: data.tier_name,
         confidence: data.confidence,
         sources: data.sources,
       }])
     } catch {
-      setMessages(m => [...m, { role: 'bot', text: 'Sorry, something went wrong. Please try again.' }])
+      setMessages(m => [...m, { role: 'bot', text: 'Something went wrong. Please try again.' }])
     } finally {
       setLoading(false)
     }
@@ -75,14 +81,27 @@ export default function Chat() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) }
   }
 
+  const TIER_LABELS: Record<string, { label: string; className: string }> = {
+    'JSON Lookup': { label: '⚡ Instant',  className: 'tier-1' },
+    'TF-IDF':      { label: '🔍 Search',   className: 'tier-2' },
+    'Gemini':      { label: '🧠 Gemini',   className: 'tier-3' },
+  }
+
   return (
     <div className="page chat-page">
+      <div className="grid-bg" />
+
       {/* Navbar */}
       <nav className="navbar">
-        <Link to="/" className="navbar-logo">⚡ Botzilla</Link>
+        <Link to="/" className="navbar-logo">
+          <span className="navbar-logo-icon">⚡</span>
+          Botzilla
+        </Link>
         <div className="navbar-actions">
           {meetingId && (
-            <Link to={`/overview/${meetingId}`} className="btn btn-ghost">← Overview</Link>
+            <Link to={`/overview/${meetingId}`} className="btn btn-ghost">
+              ← Overview
+            </Link>
           )}
         </div>
       </nav>
@@ -90,10 +109,26 @@ export default function Chat() {
       {/* Chat header */}
       <div className="chat-header">
         <div className="container">
-          <h2 style={{ fontSize:'1.1rem', fontWeight:700 }}>
-            💬 Ask about this meeting
-          </h2>
-          {title && <p style={{ color:'var(--c-text-subtle)', fontSize:'0.82rem', marginTop:2 }}>{title}</p>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 36, height: 36,
+              background: 'linear-gradient(135deg, var(--p), var(--a))',
+              borderRadius: 'var(--r-sm)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.1rem',
+              boxShadow: '0 4px 12px rgba(99,102,241,0.4)',
+            }}>💬</div>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1rem', color: 'var(--t-0)' }}>
+                Ask about this meeting
+              </div>
+              {title && (
+                <div style={{ color: 'var(--t-3)', fontSize: '0.78rem', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                  {title}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -121,15 +156,19 @@ export default function Chat() {
               {m.role === 'bot' && (
                 <div className="bot-avatar">⚡</div>
               )}
-              <div className={`chat-bubble chat-bubble-${m.role === 'user' ? 'user' : 'bot'}`}>
-                {m.text.split('\n').map((line, li) => (
-                  <span key={li}>{line}{li < m.text.split('\n').length - 1 && <br />}</span>
-                ))}
+              <div>
+                <div className={`chat-bubble chat-bubble-${m.role === 'user' ? 'user' : 'bot'}`}>
+                  {m.text.split('\n').map((line, li) => (
+                    <span key={li}>{line}{li < m.text.split('\n').length - 1 && <br />}</span>
+                  ))}
+                </div>
                 {m.role === 'bot' && m.tier && (
                   <div className="chat-meta">
-                    {m.tier === 'JSON Lookup' && <span className="tier-chip tier-1">⚡ Instant</span>}
-                    {m.tier === 'TF-IDF'      && <span className="tier-chip tier-2">🔍 Search</span>}
-                    {m.tier === 'Gemini'       && <span className="tier-chip tier-3">🧠 Gemini</span>}
+                    {TIER_LABELS[m.tier] && (
+                      <span className={`tier-chip ${TIER_LABELS[m.tier].className}`}>
+                        {TIER_LABELS[m.tier].label}
+                      </span>
+                    )}
                     {m.confidence !== undefined && (
                       <span className="confidence-chip">
                         {Math.round(m.confidence * 100)}% match
@@ -140,6 +179,7 @@ export default function Chat() {
               </div>
             </div>
           ))}
+
           {loading && (
             <div className="chat-row bot">
               <div className="bot-avatar">⚡</div>
@@ -157,6 +197,7 @@ export default function Chat() {
         <div className="container">
           <div className="chat-input-box">
             <textarea
+              ref={textareaRef}
               id="chat-input"
               className="chat-textarea"
               placeholder="Ask anything about this meeting…"
@@ -172,10 +213,13 @@ export default function Chat() {
               onClick={() => send(input)}
               disabled={loading || !input.trim()}
             >
-              {loading ? <span className="spinner" style={{width:16,height:16,borderWidth:2}} /> : '↑'}
+              {loading
+                ? <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                : '↑'
+              }
             </button>
           </div>
-          <p className="chat-hint">Press Enter to send · Shift+Enter for newline</p>
+          <p className="chat-hint">Enter to send · Shift+Enter for newline</p>
         </div>
       </div>
     </div>
