@@ -158,8 +158,8 @@ SLIDE_WINDOW_PERCENTAGE = 0.05  # 5% of context duration
 SLIDE_WINDOW_CAP_SECONDS = 180  # 3 minute cap
 
 # Frame extraction
-FRAME_HEARTBEAT_INTERVAL = 30    # seconds between forced frame captures (was 60 — too sparse)
-SCENE_CHANGE_THRESHOLD = 0.02   # FFmpeg scene change sensitivity — 0.02 catches slide flips (was 0.3 = missed almost all)
+FRAME_HEARTBEAT_INTERVAL = 15    # seconds between forced frame captures
+SCENE_CHANGE_THRESHOLD = 0.008   # FFmpeg scene change sensitivity — ultra-sensitive for subtle slide changes
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 360
 

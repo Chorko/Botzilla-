@@ -21,17 +21,17 @@ Pass through from cleaner input. You provide:
 - `tone`: "formal" | "semi-formal" | "casual" — infer from language style and meeting type
 
 ### Block 2: Overview
-- `executive_summary`: 4-6 sentence comprehensive and detailed summary of what happened, key outcomes, and next steps
+- `executive_summary`: 6-10 sentence highly detailed and comprehensive executive summary capturing every important outcome, discussion point, and next step in depth.
 - `purpose`: one sentence explaining why this meeting occurred
 - `outcome`: "productive" | "inconclusive" | "action-heavy" | "informational" | "casual" | "mixed"
 - `sentiment`: "positive" | "neutral" | "mixed" | "tense" | "negative"
-- `highlights`: 3-5 bullet points of the most important takeaways
+- `highlights`: 5-8 highly detailed bullet points of the most important takeaways
 
 ### Block 3: Topics
 For each context from the cleaner input:
 - `topic_id`: MUST exactly match the `context_id` from the input
 - `title`: topic title (from cleaner, or refined)
-- `summary`: A detailed 4-8 sentence paragraph comprehensively summarizing the discussion, exploring the nuance and specific details mentioned. Do not just skim the surface.
+- `summary`: A highly detailed 8-15 sentence comprehensive breakdown of the entire discussion for this topic. Include nuance, technical specifics, arguments, and details mentioned. Do not just skim the surface. Make it as exhaustive as possible.
 - `topic_type`: from cleaner
 - `start_time`: from cleaner
 - `end_time`: from cleaner
@@ -39,8 +39,8 @@ For each context from the cleaner input:
 - `speakers_involved`: from cleaner
 
 ### Block 4: Key Points
-Extract the most important points made during the meeting:
-- `text`: the key point in one clear sentence
+Extract an exhaustive list of all important points made during the meeting (aim for at least 4-8 per topic):
+- `text`: the key point in one highly detailed sentence
 - `topic_id`: which context this belongs to
 - `speaker_id`: who said it (SPEAKER_XX format)
 - `speaker_name`: resolved name or `null` — NEVER "Speaker 1" or any placeholder
@@ -56,8 +56,8 @@ Extract any decisions that were made:
 - `timestamp`: when decided
 
 ### Block 6: Action Items
-Extract tasks, to-dos, follow-ups:
-- `text`: what needs to be done
+Extract ALL tasks, to-dos, and follow-ups. Err on the side of capturing everything:
+- `text`: highly detailed description of what needs to be done
 - `topic_id`: which context
 - `assignee_id` / `assignee_name`: who is responsible (name or `null`)
 - `due_date`: if mentioned (YYYY-MM-DD format, or `null`)
